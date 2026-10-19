@@ -1,0 +1,39 @@
+{
+  "name": "@gitbybit/vscode-extension-test-vitest-runner",
+  "version": "0.0.9",
+  "private": false,
+  "type": "module",
+  "description": "Vitest plugin for running VS Code extension tests inside the extension host.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@vscode/test-electron": "^2.5.2"
+  },
+  "peerDependencies": {
+    "vitest": "^4.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.120.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  },
+  "scripts": {
+    "build": "rimraf ./dist ./test/sample-extension/dist && tsc -p tsconfig.json && tsc -p test/sample-extension/tsconfig.json",
+    "debug:extension-host": "pnpm run build && vitest --run --config test/vitest.debug.config.ts --testTimeout=0 --hookTimeout=0",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p test/tsconfig.json && tsc --noEmit -p test/suite/tsconfig.json && tsc --noEmit -p test/sample-extension/tsconfig.json",
+    "test:vitest": "pnpm run build && vitest --run --config test/vitest.config.ts",
+    "test:extension-host-debugger": "pnpm run build && node test/extension-host-debugger-smoke.mjs"
+  },
+  "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be"
+}
