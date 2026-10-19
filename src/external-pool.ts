@@ -19,8 +19,9 @@ export interface VSCodeDebugOptions {
 }
 
 export interface VSCodePoolOptions {
-  extensionDevelopmentPath: string | string[];
+  extensionDevelopmentPath: string;
   extensionTestsPath: string;
+  version?: string;
   cachePath?: string;
   vscodeExecutablePath?: string;
   launchArgs?: string[];
@@ -96,6 +97,7 @@ class VSCodeExtensionHostWorker {
       vscodeExecutablePath: this.options.vscodeExecutablePath,
       cachePath: this.options.cachePath,
       extensionDevelopmentPath: this.options.extensionDevelopmentPath,
+      version: this.options.version,
       extensionTestsPath: this.options.extensionTestsPath,
       extensionTestsEnv: {
         VITEST_RUNNER_IPC_HOST: '127.0.0.1',
@@ -323,10 +325,10 @@ async function launchVSCodeTests(options: VSCodeLaunchOptions) {
   };
 }
 
-export async function downloadVSCodeExecutable(options: Pick<VSCodePoolOptions, 'cachePath' | 'extensionDevelopmentPath'>): Promise<string> {
+export async function downloadVSCodeExecutable(options: Pick<VSCodePoolOptions, 'cachePath' | 'version'>): Promise<string> {
   return downloadAndUnzipVSCode({
     cachePath: options.cachePath,
-    extensionDevelopmentPath: options.extensionDevelopmentPath
+    version: process.env.VSCODE_VERSION ?? options.version
   });
 }
 
@@ -353,12 +355,7 @@ function createVSCodeArgs(options: VSCodeLaunchOptions) {
     '--disable-workspace-trust',
     `--extensionTestsPath=${options.extensionTestsPath}`
   ];
-
-  const extensionDevelopmentPaths = Array.isArray(options.extensionDevelopmentPath)
-    ? options.extensionDevelopmentPath
-    : [options.extensionDevelopmentPath];
-
-  args.push(...extensionDevelopmentPaths.map(item => `--extensionDevelopmentPath=${item}`));
+  args.push(`--extensionDevelopmentPath=${options.extensionDevelopmentPath}`);
   args = [
     ...(options.launchArgs ?? []),
     ...args

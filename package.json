@@ -1,5 +1,5 @@
 {
-  "name": "@gitbybit/vscode-extension-test-vitest-runner",
+  "name": "vitest-vscode-runner",
   "version": "0.0.9",
   "private": false,
   "type": "module",
@@ -16,17 +16,17 @@
     "dist"
   ],
   "dependencies": {
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^3.0.0"
   },
   "peerDependencies": {
-    "vitest": "^4.1.7"
+    "vitest": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.0.0",
     "@types/vscode": "^1.120.0",
     "rimraf": "^6.0.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^5.0.0"
   },
   "scripts": {
     "build": "rimraf ./dist ./test/sample-extension/dist && tsc -p tsconfig.json && tsc -p test/sample-extension/tsconfig.json",

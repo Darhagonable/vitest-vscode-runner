@@ -1,8 +1,10 @@
 **THIS IS A PROTOTYPE. USE AT YOUR OWN RISK. NO SUPPORT SHOULD BE EXPECTED**
 
-# VS Code Vitest Runner
+# vitest-vscode-runner
 
 Experimental Vitest plugin for running VS Code extension tests inside a real VS Code Extension Development Host.
+
+Inspired by [@gitbybit/vscode-extension-test-vitest-runner](https://www.npmjs.com/package/@gitbybit/vscode-extension-test-vitest-runner).
 
 ## Why This Exists
 
@@ -23,12 +25,12 @@ Vitest CLI / IDE
 
 ```ts
 import { defineConfig } from 'vitest/config';
-import { vscodeExtensionHost } from '@gitbybit/vscode-extension-test-vitest-runner';
+import { vscodeExtensionHost } from 'vitest-vscode-runner';
 
 export default defineConfig({
   plugins: [
     vscodeExtensionHost({
-      extensionDevelopmentPath: 'path/to/extension'
+      version: '1.121.0'
     })
   ],
   test: {
@@ -46,24 +48,24 @@ If VS Code is provisioned separately, pass its executable path to skip `@vscode/
 
 ```ts
 vscodeExtensionHost({
-  extensionDevelopmentPath: 'path/to/extension',
   vscodeExecutablePath: '/path/to/Code'
 });
 ```
 
-As of May 22, 2026, this runner is developed against VS Code 1.121.0 test downloads through `@vscode/test-electron` 2.5.2, with `vitest` 4.1.7. In that VS Code extension-host runtime, the `vscode` module is not a package on disk. VS Code provides it as a virtual CommonJS module to extension code. The runner keeps test imports natural (`import * as vscode from 'vscode'`) but maps that specifier to an internal shim that calls `require('vscode')` inside the extension host.
+This runner is developed against VS Code 1.121.0 test downloads through `@vscode/test-electron` 3.1.0, with `vitest` 5.0.5. In that VS Code extension-host runtime, the `vscode` module is not a package on disk. VS Code provides it as a virtual CommonJS module to extension code. The runner keeps test imports natural (`import * as vscode from 'vscode'`) but maps that specifier to an internal shim that calls `require('vscode')` inside the extension host.
 
-This avoids a subtle platform trap in Vitest 4.1.7's external-module path. The relevant source is [`VitestModuleEvaluator.convertIdToImportUrl()`](https://github.com/vitest-dev/vitest/blob/v4.1.7/packages/vitest/src/runtime/moduleRunner/moduleEvaluator.ts) in `packages/vitest/src/runtime/moduleRunner/moduleEvaluator.ts`. On Windows, that method converts non-URL external ids to `file://` URLs so native ESM can import real Windows paths. That conversion is correct for paths, but not for the virtual `vscode` module. If bare `vscode` is externalized, it can be treated like a path and Node will search for a real file/package instead of letting the extension host provide the API.
+This avoids a subtle platform trap in Vitest's external-module path. The relevant source is [`VitestModuleEvaluator.convertIdToImportUrl()`](https://github.com/vitest-dev/vitest/blob/v5.0.0/packages/vitest/src/runtime/moduleRunner/moduleEvaluator.ts) in `packages/vitest/src/runtime/moduleRunner/moduleEvaluator.ts`. On Windows, that method converts non-URL external ids to `file://` URLs so native ESM can import real Windows paths. That conversion is correct for paths, but not for the virtual `vscode` module. If bare `vscode` is externalized, it can be treated like a path and Node will search for a real file/package instead of letting the extension host provide the API.
 
 Useful options:
 
 ```ts
 vscodeExtensionHost({
-  extensionDevelopmentPath: 'path/to/extension',
   launchArgs: ['--disable-extensions'],
   startupTimeoutMs: 30_000
 });
 ```
+
+Pin the VS Code build with `version` (`'stable'`, `'insiders'`, or an exact version like `'1.121.0'`). The `VSCODE_VERSION` environment variable overrides it when set, so CI matrices can vary the build without changing committed config.
 
 ## Debugging
 
@@ -79,7 +81,7 @@ Use `debug` when you need to attach a debugger to extension-host code:
 
 ```ts
 vscodeExtensionHost({
-  extensionDevelopmentPath: 'path/to/extension',
+  version: '1.121.0',
   debug: true
 });
 ```
@@ -90,7 +92,7 @@ Choose an explicit port when `9229` is already in use, or when you want a stable
 
 ```ts
 vscodeExtensionHost({
-  extensionDevelopmentPath: 'path/to/extension',
+  version: '1.121.0',
   debug: {
     port: 9230
   }
@@ -101,7 +103,7 @@ Use `break: true` when you need the extension host to wait for the debugger befo
 
 ```ts
 vscodeExtensionHost({
-  extensionDevelopmentPath: 'path/to/extension',
+  version: '1.121.0',
   debug: {
     port: 9230,
     break: true
@@ -124,7 +126,7 @@ It uses `test/vitest.debug.config.ts`, opens the extension-host inspector on `12
 
 ```ts
 vscodeExtensionHost({
-  extensionDevelopmentPath: 'test/sample-extension',
+  version: '1.121.0',
   debug: {
     port: 9230,
     break: true

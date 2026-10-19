@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, expect, it } from 'vitest';
+import { activate } from '../sample-extension/src/extension';
 
 describe('vscode API', () => {
   it('exposes the extension host API', () => {
@@ -11,5 +12,14 @@ describe('vscode API', () => {
     const doc = await vscode.workspace.openTextDocument({ content: 'hello from the extension host' });
     expect(doc.getText()).toBe('hello from the extension host');
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+});
+
+describe('sample extension', () => {
+  it('can be imported and activated directly from source', () => {
+    const subscriptions: vscode.Disposable[] = [];
+    activate({ subscriptions } as unknown as vscode.ExtensionContext);
+    expect(subscriptions).toHaveLength(1);
+    subscriptions[0].dispose();
   });
 });

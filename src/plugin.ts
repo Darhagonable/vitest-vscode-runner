@@ -10,18 +10,12 @@ import {
 } from './external-pool.js';
 
 export interface VSCodeExtensionHostPluginOptions {
-  extensionDevelopmentPath: string | string[];
   extensionTestsPath?: string;
+  version?: string;
   cachePath?: string;
   vscodeExecutablePath?: string;
   launchArgs?: string[];
   debug?: boolean | VSCodeDebugOptions;
-  /**
-   * @deprecated Kept for compatibility. When enabled, the runner resolves
-   * `vscode` through an extension-host CommonJS shim instead of exposing it to
-   * Vitest's external-module loader.
-   */
-  externalizeVSCode?: boolean;
   disableConsoleIntercept?: boolean;
   fileParallelism?: boolean;
   isolate?: boolean;
@@ -45,11 +39,9 @@ export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): 
       const root = resolveRoot(config.root);
       const test = getOrCreateRecord(config as Record<string, unknown>, 'test');
 
-      if (options.externalizeVSCode !== false) {
-        const vscodeShimPath = path.join(resolvePath(root, options.cachePath ?? '.vscode-test'), vscodeShimFileName);
-        ensureVSCodeShimFile(vscodeShimPath);
-        vscodeShimId = normalizeModuleId(vscodeShimPath);
-      }
+      const vscodeShimPath = path.join(resolvePath(root, options.cachePath ?? '.vscode-test'), vscodeShimFileName);
+      ensureVSCodeShimFile(vscodeShimPath);
+      vscodeShimId = normalizeModuleId(vscodeShimPath);
 
       if (test.pool !== undefined) {
         throw new Error('[vitest-vscode-extension-host] test.pool is managed by vscodeExtensionHost().');
@@ -123,8 +115,9 @@ export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): 
 
 function createPoolOptions(root: string, options: VSCodeExtensionHostPluginOptions) {
   return {
-    extensionDevelopmentPath: resolvePathOrPaths(root, options.extensionDevelopmentPath),
+    extensionDevelopmentPath: root,
     extensionTestsPath: resolvePath(root, options.extensionTestsPath ?? defaultExtensionTestsPath()),
+    version: options.version,
     cachePath: resolveOptionalPath(root, options.cachePath ?? '.vscode-test'),
     vscodeExecutablePath: resolveOptionalPath(root, options.vscodeExecutablePath),
     launchArgs: options.launchArgs,
@@ -147,12 +140,6 @@ function resolveRoot(root: string | undefined) {
 
 function resolveOptionalPath(root: string, value: string | undefined) {
   return value ? resolvePath(root, value) : undefined;
-}
-
-function resolvePathOrPaths(root: string, value: string | string[]) {
-  return Array.isArray(value)
-    ? value.map(item => resolvePath(root, item))
-    : resolvePath(root, value);
 }
 
 function resolvePath(root: string, value: string) {

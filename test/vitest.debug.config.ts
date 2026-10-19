@@ -4,7 +4,7 @@ import { vscodeExtensionHost } from '../dist/index.js';
 export default defineConfig({
   plugins: [
     vscodeExtensionHost({
-      extensionDevelopmentPath: 'test/sample-extension',
+      version: '1.121.0',
       debug: {
         port: 9230,
         break: true
