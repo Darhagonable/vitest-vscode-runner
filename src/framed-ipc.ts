@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { Socket } from 'node:net';
-import { deserialize, serialize } from 'node:v8';
+import { parse, stringify } from 'devalue';
 
 export class FramedIpc extends EventEmitter {
   private buffer = Buffer.alloc(0);
@@ -14,7 +14,7 @@ export class FramedIpc extends EventEmitter {
   }
 
   send(message: unknown): void {
-    const body = serialize(message);
+    const body = Buffer.from(stringify(message), 'utf8');
     const header = Buffer.allocUnsafe(4);
     header.writeUInt32BE(body.byteLength, 0);
     this.socket.write(Buffer.concat([header, body]));
@@ -40,7 +40,7 @@ export class FramedIpc extends EventEmitter {
 
       const body = this.buffer.subarray(4, length + 4);
       this.buffer = this.buffer.subarray(length + 4);
-      this.emit('message', deserialize(body));
+      this.emit('message', parse(body.toString('utf8')));
     }
   }
 }
