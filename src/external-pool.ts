@@ -39,10 +39,38 @@ interface VSCodeRun {
 export function createVSCodeExtensionHostPool(options: VSCodePoolOptions): PoolShape {
   return {
     name: 'vscodeExtensionHost',
-    createPoolWorker() {
-      return new VSCodeExtensionHostWorker(options);
+    createPoolWorker(poolOptions: unknown) {
+      return new VSCodeExtensionHostWorker(withInspectorDefaults(options, poolOptions));
     }
   };
+}
+
+/*
+ * Translate vitest's own --inspect / --inspect-brk flags into extension-host
+ * inspector arguments, so `vitest --inspect-brk` debugs extension-host code
+ * the same way it debugs any other pool. Explicit `debug` and
+ * `startupTimeoutMs` options take precedence.
+ */
+function withInspectorDefaults(options: VSCodePoolOptions, poolOptions: unknown): VSCodePoolOptions {
+  const inspector = readInspectorConfig(poolOptions);
+
+  if (inspector?.enabled) {
+    options.debug ??= {
+      port: inspector.port ?? 9229,
+      break: inspector.waitForDebugger === true
+    };
+  }
+
+  if (inspector?.waitForDebugger) {
+    options.startupTimeoutMs ??= 300_000;
+  }
+
+  return options;
+}
+
+function readInspectorConfig(poolOptions: unknown): { enabled?: boolean; port?: number; waitForDebugger?: boolean } | undefined {
+  const project = (poolOptions as { project?: { config?: Record<string, unknown> } } | undefined)?.project;
+  return project?.config?.inspector as { enabled?: boolean; port?: number; waitForDebugger?: boolean } | undefined;
 }
 
 class VSCodeExtensionHostWorker {

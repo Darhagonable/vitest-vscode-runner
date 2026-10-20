@@ -5,7 +5,7 @@
       "name": "Attach Vitest VS Code Extension Host",
       "type": "extensionHost",
       "request": "attach",
-      "port": 9230,
+      "port": 9229,
       "sourceMaps": true
     }
   ]

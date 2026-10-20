@@ -119,19 +119,13 @@ vscodeExtensionHost({
 This repo includes a manual debugging script:
 
 ```sh
-pnpm run debug:extension-host -- <test-file>
+pnpm run debug:extension-host
 ```
 
-It uses `test/vitest.debug.config.ts`, opens the extension-host inspector on `127.0.0.1:9230`, sets `break: true`, and raises `startupTimeoutMs` to 5 minutes.
+It runs the suite with `vitest --inspect-brk`: the plugin translates vitest's inspector flag into `--inspect-brk-extensions=9229`, pausing the extension host at startup until a debugger attaches, with `startupTimeoutMs` raised to 5 minutes.
 
 ```ts
-vscodeExtensionHost({
-  version: '1.121.0',
-  debug: {
-    port: 9230,
-    break: true
-  }
-});
+vitest --run --inspect-brk --no-file-parallelism
 ```
 
 ### VS Code
@@ -143,18 +137,18 @@ This repo includes `.vscode/launch.json` with:
   "name": "Attach Vitest VS Code Extension Host",
   "type": "extensionHost",
   "request": "attach",
-  "port": 9230,
+  "port": 9229,
   "sourceMaps": true
 }
 ```
 
 To debug a test:
 
-1. Set a breakpoint in `test/suite/*.test.ts` or `test/sample-extension/src/extension.ts`.
+1. Set a breakpoint in `tests/sample-extension/tests/*.test.ts` or `tests/sample-extension/src/extension.ts`.
 2. Start the debuggable run:
 
    ```sh
-   pnpm run debug:extension-host -- test/suite/vscode-api-pass.test.ts
+   pnpm run debug:extension-host tests/sample-extension/tests/vscode-api-pass.test.ts
    ```
 
 3. Wait for:
@@ -172,16 +166,16 @@ For PHPStorm, WebStorm, or IntelliJ IDEA, create this run configuration once:
 ```text
 Type: Attach to Node.js/Chrome
 Host: 127.0.0.1
-Port: 9230
+Port: 9229
 ```
 
 To debug a test:
 
-1. Set a breakpoint in `test/suite/*.test.ts` or `test/sample-extension/src/extension.ts`.
+1. Set a breakpoint in `tests/sample-extension/tests/*.test.ts` or `tests/sample-extension/src/extension.ts`.
 2. Start the debuggable run:
 
    ```sh
-   pnpm run debug:extension-host -- test/suite/vscode-api-pass.test.ts
+   pnpm run debug:extension-host tests/sample-extension/tests/vscode-api-pass.test.ts
    ```
 
 3. Wait for:
@@ -192,7 +186,7 @@ To debug a test:
 
 4. Run the `Attach to Node.js/Chrome` configuration.
 
-Only one extension-host debug run can use `127.0.0.1:9230` and the test VS Code profile at a time. Stop the current debug run before starting another one.
+Only one extension-host debug run can use `127.0.0.1:9229` and the test VS Code profile at a time. Stop the current debug run before starting another one.
 
 ## Repository Layout
 
@@ -203,10 +197,12 @@ src/
   external-extension-host-runner.mts bridge loaded by VS Code
   framed-ipc.ts                     small framed TCP protocol
 
-test/
-  sample-extension/                 fixture VS Code extension
-  suite/                            sample Vitest tests
-  vitest.config.ts                  dogfood config using the plugin
+tests/
+  sample-extension/                 fixture VS Code extension: the dev-extension host
+    tests/                          sample Vitest tests
+    vitest.config.ts                dogfood config using the plugin
+
+vitest.config.ts                    workspace config running the sample-extension project
 ```
 
 ## Scripts
@@ -217,17 +213,17 @@ The repo keeps only public workflow scripts in `package.json`:
 pnpm run build                    # build the plugin and sample extension
 pnpm run typecheck                # typecheck all TypeScript projects
 pnpm run debug:extension-host     # build, then start a debuggable extension-host run
-pnpm run test:vitest              # build, then run the Vitest dogfood suite
+pnpm test              # build, then run the Vitest dogfood suite
 pnpm run test:extension-host-debugger
 ```
 
-`pnpm run build` clears `dist/` and `test/sample-extension/dist/`, then compiles both the published runner and the fixture extension.
+`pnpm run build` clears `dist/`, then compiles the runner.
 
 `pnpm run typecheck` checks the plugin, test harness, sample suite, and sample extension projects.
 
 The sample suite intentionally contains one failing test so file-level and test-level reporting can be inspected in Vitest and IDE integrations.
 
-`pnpm run test:extension-host-debugger` is not part of the manual debugging flow. It is an internal smoke check for this repo that verifies the extension-host inspector can stop at a breakpoint in `test/suite/vscode-api-pass.test.ts`.
+`pnpm run test:extension-host-debugger` is not part of the manual debugging flow. It is an internal smoke check for this repo that verifies the extension-host inspector can stop at a breakpoint in `tests/sample-extension/tests/vscode-api-pass.test.ts`.
 
 ## Current Limits
 

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, expect, it } from 'vitest';
-import { activate } from '../sample-extension/src/extension';
+import { activate } from '../src/extension';
 
 describe('vscode API', () => {
   it('exposes the extension host API', () => {
