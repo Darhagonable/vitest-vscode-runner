@@ -4,7 +4,7 @@ import { vscodeExtensionHost } from '../dist/index.js';
 export default defineConfig({
   plugins: [
     vscodeExtensionHost({
-      version: '1.121.0'
+      version: 'stable'
     })
   ],
   test: {

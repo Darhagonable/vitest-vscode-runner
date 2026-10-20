@@ -1,13 +1,11 @@
 import { EventEmitter } from 'node:events';
-import { spawn, type ChildProcess } from 'node:child_process';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import {
   downloadAndUnzipVSCode,
+  runTests,
   TestRunFailedError
 } from '@vscode/test-electron';
-import { defaultCachePath } from '@vscode/test-electron/out/download.js';
-import { killTree } from '@vscode/test-electron/out/util.js';
 import { FramedIpc } from './framed-ipc.js';
 
 export interface VSCodeDebugOptions {
@@ -36,7 +34,6 @@ interface PoolShape {
 
 interface VSCodeRun {
   readonly finished: Promise<number>;
-  terminate(): Promise<void>;
 }
 
 export function createVSCodeExtensionHostPool(options: VSCodePoolOptions): PoolShape {
@@ -157,9 +154,7 @@ class VSCodeExtensionHostWorker {
         );
       }
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('Timed out waiting for VS Code to close')) {
-        await this.run?.terminate();
-      } else if (!this.isVSCodeTestRunFailure(error)) {
+      if (!this.isVSCodeTestRunFailure(error)) {
         throw error;
       }
     } finally {
@@ -242,10 +237,6 @@ class VSCodeExtensionHostWorker {
     this.ipc?.destroy();
     this.server?.close();
 
-    if (this.run) {
-      void this.run.terminate().catch(() => undefined);
-    }
-
     this.ipc = undefined;
     this.server = undefined;
     this.run = undefined;
@@ -304,24 +295,22 @@ function createDebugLaunchArg(debug: boolean | VSCodeDebugOptions | undefined) {
 }
 
 async function launchVSCodeTests(options: VSCodeLaunchOptions) {
-  const executable = options.vscodeExecutablePath ?? await downloadVSCodeExecutable(options);
-  const args = createVSCodeArgs(options);
-  const shell = process.platform === 'win32';
-  const child = spawn(shell ? `"${executable}"` : executable, args, {
-    env: createVSCodeEnvironment(options.extensionTestsEnv),
-    shell
-  });
+  const vscodeExecutablePath = options.vscodeExecutablePath ?? await downloadVSCodeExecutable(options);
 
-  child.stdout?.on('data', chunk => process.stdout.write(chunk));
-  child.stderr?.on('data', chunk => process.stderr.write(chunk));
-
-  const finished = waitForVSCode(child);
+  // VS Code's Vitest extension runs test processes under Electron-as-Node.
+  // The spawned VS Code must start as Electron, not inherit that mode.
+  // runTests() merges process.env, so sanitize the environment directly.
+  delete process.env.ELECTRON_RUN_AS_NODE;
 
   return {
-    finished,
-    async terminate() {
-      await terminateProcessTree(child, finished);
-    }
+    finished: runTests({
+      vscodeExecutablePath,
+      extensionDevelopmentPath: options.extensionDevelopmentPath,
+      extensionTestsPath: options.extensionTestsPath,
+      extensionTestsEnv: options.extensionTestsEnv,
+      launchArgs: createLaunchArgs(options),
+      cachePath: options.cachePath
+    })
   };
 }
 
@@ -330,102 +319,6 @@ export async function downloadVSCodeExecutable(options: Pick<VSCodePoolOptions, 
     cachePath: options.cachePath,
     version: process.env.VSCODE_VERSION ?? options.version
   });
-}
-
-function createVSCodeEnvironment(extensionTestsEnv: Record<string, string>) {
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...extensionTestsEnv
-  };
-
-  // VS Code's Vitest extension runs test processes under Electron-as-Node.
-  // The downloaded VS Code executable must start as Electron, not inherit that mode.
-  delete env.ELECTRON_RUN_AS_NODE;
-
-  return env;
-}
-
-function createVSCodeArgs(options: VSCodeLaunchOptions) {
-  let args = [
-    '--no-sandbox',
-    '--disable-gpu-sandbox',
-    '--disable-updates',
-    '--skip-welcome',
-    '--skip-release-notes',
-    '--disable-workspace-trust',
-    `--extensionTestsPath=${options.extensionTestsPath}`
-  ];
-  args.push(`--extensionDevelopmentPath=${options.extensionDevelopmentPath}`);
-  args = [
-    ...(options.launchArgs ?? []),
-    ...args
-  ];
-  args.push(...createProfileArguments(args, options.cachePath));
-
-  return args;
-}
-
-function createProfileArguments(args: string[], cachePath: string | undefined) {
-  const profilePath = cachePath ?? defaultCachePath;
-  const out: string[] = [];
-
-  if (!hasLaunchArg('extensions-dir', args)) {
-    out.push(`--extensions-dir=${path.join(profilePath, 'extensions')}`);
-  }
-
-  if (!hasLaunchArg('user-data-dir', args)) {
-    out.push(`--user-data-dir=${path.join(profilePath, 'user-data')}`);
-  }
-
-  return out;
-}
-
-function hasLaunchArg(name: string, args: string[]) {
-  return args.some(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
-}
-
-function waitForVSCode(child: ChildProcess): Promise<number> {
-  return new Promise((resolve, reject) => {
-    let finished = false;
-
-    const finish = (code: number | null, signal: NodeJS.Signals | null): void => {
-      if (finished) {
-        return;
-      }
-
-      finished = true;
-      console.log(`Exit code:   ${code ?? signal}`);
-      child.stdout?.destroy();
-      child.stderr?.destroy();
-
-      if (code === 0) {
-        resolve(0);
-      } else {
-        reject(new TestRunFailedError(code ?? undefined, signal ?? undefined));
-      }
-    };
-
-    child.on('error', reject);
-    child.on('close', finish);
-    child.on('exit', finish);
-  });
-}
-
-async function terminateProcessTree(child: ChildProcess, finished: Promise<number>) {
-  if (!child.pid || child.exitCode !== null || child.signalCode !== null) {
-    return;
-  }
-
-  child.kill('SIGINT');
-
-  try {
-    await withTimeout(finished, 2_000, 'Timed out gracefully closing VS Code.');
-    return;
-  } catch {
-    await killTree(child.pid, true);
-  }
-
-  await finished.catch(() => undefined);
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
