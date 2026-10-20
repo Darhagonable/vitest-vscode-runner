@@ -128,7 +128,7 @@ class VSCodeExtensionHostWorker {
         VITEST_RUNNER_IPC_HOST: '127.0.0.1',
         VITEST_RUNNER_IPC_PORT: String(port)
       },
-      launchArgs: createLaunchArgs(this.options)
+      launchArgs: this.options.launchArgs
     });
     let bridgeConnected = false;
     const connectedBeforeExit = connected.then(() => {
@@ -307,7 +307,21 @@ function createLaunchArgs(options: VSCodePoolOptions) {
     args.push(debugArg);
   }
 
+  // Use the downloaded cache folder for profile data; test-electron skips its
+  // cwd-based defaults when these args are present.
+  if (!hasLaunchArg('extensions-dir', args)) {
+    args.push(`--extensions-dir=${path.join(options.cachePath ?? '.', 'extensions')}`);
+  }
+
+  if (!hasLaunchArg('user-data-dir', args)) {
+    args.push(`--user-data-dir=${path.join(options.cachePath ?? '.', 'user-data')}`);
+  }
+
   return args;
+}
+
+function hasLaunchArg(name: string, args: string[]) {
+  return args.some(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
 }
 
 function createDebugLaunchArg(debug: boolean | VSCodeDebugOptions | undefined) {
