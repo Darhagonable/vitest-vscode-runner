@@ -1,16 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { Plugin, ViteUserConfig } from 'vitest/config';
-import {
-  createVSCodeExtensionHostPool,
-  downloadVSCodeExecutable,
-  type VSCodePoolOptions
-
-} from './external-pool.js';
+import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+import { createVSCodeExtensionHostPool } from './external-pool.js';
 
 export interface VSCodeExtensionHostPluginOptions {
-  extensionTestsPath?: string;
   version?: string;
   cachePath?: string;
   vscodeExecutablePath?: string;
@@ -27,31 +21,34 @@ const vscodeShimSource = "module.exports = require('vscode');\n";
 
 export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): Plugin {
   let vscodeShimId: string | undefined;
-  let poolOptions: VSCodePoolOptions | undefined;
 
   return {
     name: 'vitest-vscode-extension-host',
     config(config: ViteUserConfig) {
       const root = resolveRoot(config.root);
-      const test = getOrCreateRecord(config as Record<string, unknown>, 'test');
 
       const vscodeShimPath = path.join(resolvePath(root, options.cachePath ?? '.vscode-test'), vscodeShimFileName);
       ensureVSCodeShimFile(vscodeShimPath);
       vscodeShimId = normalizeModuleId(vscodeShimPath);
 
-      if (test.pool !== undefined) {
+      if (config.test?.pool !== undefined) {
         throw new Error('[vitest-vscode-extension-host] test.pool is managed by vscodeExtensionHost().');
       }
 
-      poolOptions = createPoolOptions(root, options);
-      test.pool = createVSCodeExtensionHostPool(poolOptions);
+      config.test = { ...config.test, pool: createVSCodeExtensionHostPool(options) };
     },
-    async configResolved() {
-      if (!poolOptions || poolOptions.vscodeExecutablePath) {
+    async configResolved(resolved) {
+      if (options.vscodeExecutablePath) {
         return;
       }
 
-      poolOptions.vscodeExecutablePath = await downloadVSCodeExecutable(poolOptions);
+      // Warm the download before any worker starts so a cold fetch cannot
+      // race the bridge startup timeout. Anchor the cache at the project
+      // root so nothing leaks outside the package in monorepos.
+      options.vscodeExecutablePath = await downloadVSCodeExecutable({
+        ...options,
+        cachePath: path.resolve(resolved.root, options.cachePath ?? '.vscode-test')
+      });
     },
     resolveId(id: string) {
       if (id === 'vscode' && vscodeShimId !== undefined) {
@@ -105,21 +102,11 @@ export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): 
   };
 }
 
-function createPoolOptions(root: string, options: VSCodeExtensionHostPluginOptions) {
-  return {
-    extensionDevelopmentPath: root,
-    extensionTestsPath: resolvePath(root, options.extensionTestsPath ?? defaultExtensionTestsPath()),
-    version: options.version,
-    cachePath: resolveOptionalPath(root, options.cachePath ?? '.vscode-test'),
-    vscodeExecutablePath: resolveOptionalPath(root, options.vscodeExecutablePath),
-    launchArgs: options.launchArgs,
-    reuseWorker: options.reuseWorker ?? true,
-    startupTimeoutMs: options.startupTimeoutMs
-  };
-}
-
-function defaultExtensionTestsPath() {
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), 'external-extension-host-runner.mjs');
+export async function downloadVSCodeExecutable(options: Pick<VSCodeExtensionHostPluginOptions, 'cachePath' | 'version'>): Promise<string> {
+  return downloadAndUnzipVSCode({
+    cachePath: options.cachePath,
+    version: process.env.VSCODE_VERSION ?? options.version
+  });
 }
 
 function resolveRoot(root: string | undefined) {
@@ -128,10 +115,6 @@ function resolveRoot(root: string | undefined) {
   }
 
   return path.isAbsolute(root) ? root : path.resolve(process.cwd(), root);
-}
-
-function resolveOptionalPath(root: string, value: string | undefined) {
-  return value ? resolvePath(root, value) : undefined;
 }
 
 function resolvePath(root: string, value: string) {
@@ -145,16 +128,4 @@ function ensureVSCodeShimFile(file: string) {
 
 function normalizeModuleId(id: string) {
   return id.split('?')[0].replace(/\\/g, '/');
-}
-
-function getOrCreateRecord(parent: Record<string, unknown>, key: string) {
-  const current = parent[key];
-
-  if (current && typeof current === 'object' && !Array.isArray(current)) {
-    return current as Record<string, unknown>;
-  }
-
-  const next: Record<string, unknown> = {};
-  parent[key] = next;
-  return next;
 }

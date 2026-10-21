@@ -3,80 +3,41 @@ import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import * as net from 'node:net';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-  downloadAndUnzipVSCode,
   runTests,
+  SilentReporter,
   TestRunFailedError
 } from '@vscode/test-electron';
 import { FramedIpc } from './framed-ipc.js';
+import type { PoolOptions, PoolRunnerInitializer, PoolWorker } from 'vitest/node';
+import type { VSCodeExtensionHostPluginOptions } from './plugin.js';
 
-export interface VSCodePoolOptions {
-  extensionDevelopmentPath: string;
-  extensionTestsPath: string;
-  version?: string;
-  cachePath?: string;
-  vscodeExecutablePath?: string;
-  launchArgs?: string[];
-  reuseWorker?: boolean;
-  startupTimeoutMs?: number;
-}
+// The bundled bridge runner executed inside the VS Code extension host.
+const runnerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'external-extension-host-runner.mjs');
 
-interface PoolShape {
-  readonly name: string;
-  createPoolWorker(options: unknown): VSCodeExtensionHostWorker;
-}
-
-interface VSCodeRun {
-  readonly finished: Promise<number>;
-}
-
-export function createVSCodeExtensionHostPool(options: VSCodePoolOptions): PoolShape {
+export function createVSCodeExtensionHostPool(options: VSCodeExtensionHostPluginOptions): PoolRunnerInitializer {
   return {
     name: 'vscodeExtensionHost',
-    createPoolWorker(poolOptions: unknown) {
-      return new VSCodeExtensionHostWorker(withInspectorDefaults(options, poolOptions));
-    }
+    createPoolWorker: (poolOptions: PoolOptions) => new VSCodeExtensionHostWorker(poolOptions, options)
   };
 }
 
-/*
- * Translate vitest's own --inspect / --inspect-brk flags into extension-host
- * inspector arguments, so `vitest --inspect-brk` debugs extension-host code
- * the same way it debugs any other pool.
- */
-function withInspectorDefaults(options: VSCodePoolOptions, poolOptions: unknown): VSCodePoolOptions {
-  const inspector = readInspectorConfig(poolOptions);
-
-  if (inspector?.enabled) {
-    const port = inspector.port ?? 9229;
-    const flag = inspector.waitForDebugger ? `--inspect-brk-extensions=${port}` : `--inspect-extensions=${port}`;
-    options.launchArgs = [...(options.launchArgs ?? []), flag];
-  }
-
-  if (inspector?.waitForDebugger) {
-    options.startupTimeoutMs ??= 300_000;
-  }
-
-  return options;
-}
-
-function readInspectorConfig(poolOptions: unknown): { enabled?: boolean; port?: number; waitForDebugger?: boolean } | undefined {
-  const project = (poolOptions as { project?: { config?: Record<string, unknown> } } | undefined)?.project;
-  return project?.config?.inspector as { enabled?: boolean; port?: number; waitForDebugger?: boolean } | undefined;
-}
-
-class VSCodeExtensionHostWorker {
+class VSCodeExtensionHostWorker implements PoolWorker {
   readonly name = 'vscodeExtensionHost';
 
   private readonly events = new EventEmitter();
   private readonly pendingErrors: unknown[] = [];
   private server: net.Server | undefined;
   private ipc: FramedIpc | undefined;
-  private run: VSCodeRun | undefined;
+  private run: Promise<number> | undefined;
   private profilePath: string | undefined;
   private stopping = false;
 
-  constructor(private readonly options: VSCodePoolOptions) {}
+  constructor(
+    private readonly poolOptions: PoolOptions,
+    private readonly options: VSCodeExtensionHostPluginOptions
+  ) {}
 
   on(event: string, callback: (arg: unknown) => void): void {
     this.events.on(event, callback);
@@ -110,26 +71,56 @@ class VSCodeExtensionHostWorker {
 
     const { server, port, connected } = await this.createServer();
     this.server = server;
-    this.profilePath = path.join(this.options.cachePath ?? '.', `profile-${randomUUID().slice(0, 8)}`);
 
-    this.run = await launchVSCodeTests({
+    // Anchor the cache at the project root so nothing leaks outside the
+    // package in monorepos.
+    const root = this.poolOptions.project.config.root;
+    const cachePath = path.resolve(root, this.options.cachePath ?? '.vscode-test');
+    this.profilePath = path.join(cachePath, `profile-${randomUUID().slice(0, 8)}`);
+
+    const launchArgs = this.options.launchArgs
+      ? [...this.options.launchArgs]
+      : ['--disable-extensions'];
+
+    const debugArg = this.createDebugLaunchArg();
+    if (debugArg) {
+      launchArgs.push(debugArg);
+    }
+
+    // Use a per-worker profile directory under the cache folder so concurrent
+    // VS Code instances don't share state; test-electron skips its cwd-based
+    // defaults when these args are present.
+    if (!hasLaunchArg('extensions-dir', launchArgs)) {
+      launchArgs.push(`--extensions-dir=${path.join(this.profilePath, 'extensions')}`);
+    }
+
+    if (!hasLaunchArg('user-data-dir', launchArgs)) {
+      launchArgs.push(`--user-data-dir=${path.join(this.profilePath, 'user-data')}`);
+    }
+
+    // VS Code's Vitest extension runs test processes under Electron-as-Node.
+    // The spawned VS Code must start as Electron, not inherit that mode.
+    // runTests() merges process.env, so sanitize the environment directly.
+    delete process.env.ELECTRON_RUN_AS_NODE;
+
+    this.run = runTests({
       vscodeExecutablePath: this.options.vscodeExecutablePath,
-      cachePath: this.options.cachePath,
-      profilePath: this.profilePath,
-      extensionDevelopmentPath: this.options.extensionDevelopmentPath,
-      version: this.options.version,
-      extensionTestsPath: this.options.extensionTestsPath,
+      version: process.env.VSCODE_VERSION ?? this.options.version,
+      cachePath,
+      extensionDevelopmentPath: root,
+      extensionTestsPath: runnerPath,
       extensionTestsEnv: {
         VITEST_RUNNER_IPC_HOST: '127.0.0.1',
         VITEST_RUNNER_IPC_PORT: String(port)
       },
-      launchArgs: this.options.launchArgs
+      launchArgs,
+      reporter: new SilentReporter()
     });
     let bridgeConnected = false;
     const connectedBeforeExit = connected.then(() => {
       bridgeConnected = true;
     });
-    const exitedBeforeConnect = this.run.finished.then(
+    const exitedBeforeConnect = this.run.then(
       () => {
         if (!bridgeConnected) {
           throw new Error('VS Code exited before the extension-host Vitest bridge connected.');
@@ -148,7 +139,8 @@ class VSCodeExtensionHostWorker {
           connectedBeforeExit,
           exitedBeforeConnect
         ]),
-        this.options.startupTimeoutMs ?? 30_000,
+        this.options.startupTimeoutMs
+          ?? (this.poolOptions.project.config.inspector.waitForDebugger ? 300_000 : 30_000),
         'Timed out waiting for the VS Code extension-host Vitest bridge to connect.'
       );
     } catch (error) {
@@ -156,7 +148,7 @@ class VSCodeExtensionHostWorker {
       throw error;
     }
 
-    this.run.finished.catch(error => {
+    this.run.catch(error => {
       if (!this.stopping) {
         this.emitError(error);
       }
@@ -171,7 +163,7 @@ class VSCodeExtensionHostWorker {
     try {
       if (this.run) {
         await withTimeout(
-          this.run.finished,
+          this.run,
           5_000,
           'Timed out waiting for VS Code to close after the Vitest worker stopped.'
         );
@@ -193,8 +185,19 @@ class VSCodeExtensionHostWorker {
     }
   }
 
-  canReuse(_task: unknown): boolean {
+  canReuse(): boolean {
     return this.options.reuseWorker !== false;
+  }
+
+  private createDebugLaunchArg(): string | undefined {
+    const { enabled, port = 9229, waitForDebugger } = this.poolOptions.project.config.inspector;
+    if (!enabled) {
+      return undefined;
+    }
+
+    return waitForDebugger
+      ? `--inspect-brk-extensions=${port}`
+      : `--inspect-extensions=${port}`;
   }
 
   private async createServer() {
@@ -257,7 +260,7 @@ class VSCodeExtensionHostWorker {
 
   private isVSCodeTestRunFailure(error: unknown) {
     return error instanceof TestRunFailedError
-      && path.basename(this.options.extensionTestsPath).startsWith('external-extension-host-runner');
+      && path.basename(runnerPath).startsWith('external-extension-host-runner');
   }
 
   private cleanupAfterFailedStart() {
@@ -298,61 +301,8 @@ function isBridgeReadyMessage(message: unknown) {
     && (message as { __vscode_vitest_bridge_ready__?: boolean }).__vscode_vitest_bridge_ready__ === true;
 }
 
-interface VSCodeLaunchOptions extends VSCodePoolOptions {
-  extensionTestsEnv?: Record<string, string>;
-  profilePath?: string;
-}
-
-export function createLaunchArgs(options: VSCodePoolOptions & { profilePath?: string }) {
-  const args = options.launchArgs
-    ? [...options.launchArgs]
-    : ['--disable-extensions'];
-
-  // Use a per-worker profile directory under the cache folder so concurrent
-  // VS Code instances don't share state; test-electron skips its cwd-based
-  // defaults when these args are present.
-  const profileBase = options.profilePath ?? options.cachePath ?? '.';
-
-  if (!hasLaunchArg('extensions-dir', args)) {
-    args.push(`--extensions-dir=${path.join(profileBase, 'extensions')}`);
-  }
-
-  if (!hasLaunchArg('user-data-dir', args)) {
-    args.push(`--user-data-dir=${path.join(profileBase, 'user-data')}`);
-  }
-
-  return args;
-}
-
 function hasLaunchArg(name: string, args: string[]) {
   return args.some(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
-}
-
-async function launchVSCodeTests(options: VSCodeLaunchOptions) {
-  const vscodeExecutablePath = options.vscodeExecutablePath ?? await downloadVSCodeExecutable(options);
-
-  // VS Code's Vitest extension runs test processes under Electron-as-Node.
-  // The spawned VS Code must start as Electron, not inherit that mode.
-  // runTests() merges process.env, so sanitize the environment directly.
-  delete process.env.ELECTRON_RUN_AS_NODE;
-
-  return {
-    finished: runTests({
-      vscodeExecutablePath,
-      extensionDevelopmentPath: options.extensionDevelopmentPath,
-      extensionTestsPath: options.extensionTestsPath,
-      extensionTestsEnv: options.extensionTestsEnv,
-      launchArgs: createLaunchArgs(options),
-      cachePath: options.cachePath
-    })
-  };
-}
-
-export async function downloadVSCodeExecutable(options: Pick<VSCodePoolOptions, 'cachePath' | 'version'>): Promise<string> {
-  return downloadAndUnzipVSCode({
-    cachePath: options.cachePath,
-    version: process.env.VSCODE_VERSION ?? options.version
-  });
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
