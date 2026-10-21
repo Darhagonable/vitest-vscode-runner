@@ -18,14 +18,6 @@ describe('createLaunchArgs', () => {
     expect(args).toContain('--user-data-dir=user-data');
   });
 
-  it.each([
-    [true, '--inspect-extensions=9229'],
-    [{ break: true }, '--inspect-brk-extensions=9229'],
-    [{ port: 9230, break: true }, '--inspect-brk-extensions=9230']
-  ])('translates debug %j to %s', (debug, expected) => {
-    expect(createLaunchArgs({ debug: debug as boolean | { port?: number; break?: boolean } })).toContain(expected);
-  });
-
   it('prefers profilePath over cachePath', () => {
     const args = createLaunchArgs({ cachePath: 'shared/cache', profilePath: 'cache/profile-xyz' });
     expect(args).toContain('--extensions-dir=cache/profile-xyz/extensions');

@@ -73,46 +73,15 @@ Tests run inside the spawned VS Code extension host. IDE debuggers must attach t
 
 Do not use an IDE's normal Vitest debug action for breakpoints in these tests. That debugs the outer Vitest process; test code that imports `vscode` runs in the spawned extension host.
 
-### Debug Option
+### Using vitest's inspector flags
 
-Leave `debug` unset for normal test runs.
+Run with `--inspect` or `--inspect-brk` exactly as you would for any vitest project:
 
-Use `debug` when you need to attach a debugger to extension-host code:
-
-```ts
-vscodeExtensionHost({
-  version: '1.121.0',
-  debug: true
-});
+```sh
+vitest --inspect-brk
 ```
 
-`debug: true` opens VS Code's extension-host inspector on `127.0.0.1:9229` and does not pause startup. It does not attach your IDE automatically; start the test run, then attach with an IDE debug configuration that targets that port, such as a VS Code `extensionHost` attach config or a JetBrains Node.js/Chrome attach config. Use this when the test can start immediately and you only need breakpoints that will be reached after the debugger attaches.
-
-Choose an explicit port when `9229` is already in use, or when you want a stable IDE launch configuration:
-
-```ts
-vscodeExtensionHost({
-  version: '1.121.0',
-  debug: {
-    port: 9230
-  }
-});
-```
-
-Use `break: true` when you need the extension host to wait for the debugger before code runs:
-
-```ts
-vscodeExtensionHost({
-  version: '1.121.0',
-  debug: {
-    port: 9230,
-    break: true
-  },
-  startupTimeoutMs: 300_000
-});
-```
-
-`break: true` is useful for debugging module load, extension activation, bridge startup, and the first lines of a test file. Raise `startupTimeoutMs` because Vitest waits for the extension-host bridge to connect, and that bridge cannot connect while the extension host is paused at startup.
+The plugin translates vitest's inspector settings into `--inspect-brk-extensions=9229` on the VS Code process, pausing the extension host at startup until a debugger attaches. `startupTimeoutMs` is automatically raised to 5 minutes under `--inspect-brk` so the bridge has time to connect after you attach. Use a custom port with `--inspect-port=9230`.
 
 ### Repo Debug Script
 

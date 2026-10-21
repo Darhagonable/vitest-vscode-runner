@@ -5,7 +5,7 @@ import type { Plugin, ViteUserConfig } from 'vitest/config';
 import {
   createVSCodeExtensionHostPool,
   downloadVSCodeExecutable,
-  type VSCodeDebugOptions, type VSCodePoolOptions
+  type VSCodePoolOptions
 
 } from './external-pool.js';
 
@@ -15,7 +15,6 @@ export interface VSCodeExtensionHostPluginOptions {
   cachePath?: string;
   vscodeExecutablePath?: string;
   launchArgs?: string[];
-  debug?: boolean | VSCodeDebugOptions;
   reuseWorker?: boolean;
   startupTimeoutMs?: number;
 }
@@ -114,7 +113,6 @@ function createPoolOptions(root: string, options: VSCodeExtensionHostPluginOptio
     cachePath: resolveOptionalPath(root, options.cachePath ?? '.vscode-test'),
     vscodeExecutablePath: resolveOptionalPath(root, options.vscodeExecutablePath),
     launchArgs: options.launchArgs,
-    debug: options.debug,
     reuseWorker: options.reuseWorker ?? true,
     startupTimeoutMs: options.startupTimeoutMs
   };

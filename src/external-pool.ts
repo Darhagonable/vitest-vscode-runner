@@ -10,14 +10,6 @@ import {
 } from '@vscode/test-electron';
 import { FramedIpc } from './framed-ipc.js';
 
-export interface VSCodeDebugOptions {
-  port?: number;
-  /**
-   * Pause extension-host startup until a debugger attaches. Defaults to false.
-   */
-  break?: boolean;
-}
-
 export interface VSCodePoolOptions {
   extensionDevelopmentPath: string;
   extensionTestsPath: string;
@@ -25,7 +17,6 @@ export interface VSCodePoolOptions {
   cachePath?: string;
   vscodeExecutablePath?: string;
   launchArgs?: string[];
-  debug?: boolean | VSCodeDebugOptions;
   reuseWorker?: boolean;
   startupTimeoutMs?: number;
 }
@@ -51,17 +42,15 @@ export function createVSCodeExtensionHostPool(options: VSCodePoolOptions): PoolS
 /*
  * Translate vitest's own --inspect / --inspect-brk flags into extension-host
  * inspector arguments, so `vitest --inspect-brk` debugs extension-host code
- * the same way it debugs any other pool. Explicit `debug` and
- * `startupTimeoutMs` options take precedence.
+ * the same way it debugs any other pool.
  */
 function withInspectorDefaults(options: VSCodePoolOptions, poolOptions: unknown): VSCodePoolOptions {
   const inspector = readInspectorConfig(poolOptions);
 
   if (inspector?.enabled) {
-    options.debug ??= {
-      port: inspector.port ?? 9229,
-      break: inspector.waitForDebugger === true
-    };
+    const port = inspector.port ?? 9229;
+    const flag = inspector.waitForDebugger ? `--inspect-brk-extensions=${port}` : `--inspect-extensions=${port}`;
+    options.launchArgs = [...(options.launchArgs ?? []), flag];
   }
 
   if (inspector?.waitForDebugger) {
@@ -318,11 +307,6 @@ export function createLaunchArgs(options: VSCodePoolOptions & { profilePath?: st
   const args = options.launchArgs
     ? [...options.launchArgs]
     : ['--disable-extensions'];
-  const debugArg = createDebugLaunchArg(options.debug);
-
-  if (debugArg) {
-    args.push(debugArg);
-  }
 
   // Use a per-worker profile directory under the cache folder so concurrent
   // VS Code instances don't share state; test-electron skips its cwd-based
@@ -342,18 +326,6 @@ export function createLaunchArgs(options: VSCodePoolOptions & { profilePath?: st
 
 function hasLaunchArg(name: string, args: string[]) {
   return args.some(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
-}
-
-function createDebugLaunchArg(debug: boolean | VSCodeDebugOptions | undefined) {
-  if (!debug) {
-    return undefined;
-  }
-
-  const options = debug === true ? {} : debug;
-  const port = options.port ?? 9229;
-  const flag = options.break === true ? '--inspect-brk-extensions' : '--inspect-extensions';
-
-  return `${flag}=${port}`;
 }
 
 async function launchVSCodeTests(options: VSCodeLaunchOptions) {
