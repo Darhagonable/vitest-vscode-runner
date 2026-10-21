@@ -4,11 +4,11 @@ import { vscodeExtensionHost } from '../../dist/index.js';
 export default defineProject({
   plugins: [
     vscodeExtensionHost({
-      version: 'stable'
+      version: 'stable',
+      launchArgs: ['--log', 'off', '--disable-gpu'],
     })
   ],
   test: {
-    include: ['tests/**/*.test.ts'],
-    globals: true
+    include: ['tests/**/*.test.ts']
   }
 });

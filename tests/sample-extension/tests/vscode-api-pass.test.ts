@@ -19,7 +19,16 @@ describe('sample extension', () => {
   it('can be imported and activated directly from source', () => {
     const subscriptions: vscode.Disposable[] = [];
     activate({ subscriptions } as unknown as vscode.ExtensionContext);
-    expect(subscriptions).toHaveLength(1);
-    subscriptions[0].dispose();
+    expect(subscriptions).toHaveLength(2);
+    subscriptions.forEach(disposable => disposable.dispose());
+  });
+
+  it('registers and executes a command', async () => {
+    const subscriptions: vscode.Disposable[] = [];
+    activate({ subscriptions } as unknown as vscode.ExtensionContext);
+
+    await expect(vscode.commands.executeCommand('sample-extension.helloWorld')).resolves.toBeUndefined();
+
+    subscriptions.forEach(disposable => disposable.dispose());
   });
 });
