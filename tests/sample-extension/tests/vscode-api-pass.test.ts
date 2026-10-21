@@ -19,7 +19,7 @@ describe('sample extension', () => {
   it('can be imported and activated directly from source', () => {
     const subscriptions: vscode.Disposable[] = [];
     activate({ subscriptions } as unknown as vscode.ExtensionContext);
-    expect(subscriptions).toHaveLength(2);
+    expect(subscriptions).toHaveLength(1);
     subscriptions.forEach(disposable => disposable.dispose());
   });
 

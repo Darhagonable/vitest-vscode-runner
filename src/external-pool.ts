@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import * as net from 'node:net';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -72,31 +73,27 @@ class VSCodeExtensionHostWorker implements PoolWorker {
     const { server, port, connected } = await this.createServer();
     this.server = server;
 
-    // Anchor the cache at the project root so nothing leaks outside the
-    // package in monorepos.
+    // Anchor the download cache at the project root so nothing leaks outside
+    // the package in monorepos. Per-worker profiles live in the OS temp dir:
+    // short (unix socket path limits) and cleaned up on stop.
     const root = this.poolOptions.project.config.root;
     const cachePath = path.resolve(root, this.options.cachePath ?? '.vscode-test');
-    this.profilePath = path.join(cachePath, `profile-${randomUUID().slice(0, 8)}`);
+    this.profilePath = path.join(os.tmpdir(), `vsct-${randomUUID().slice(0, 8)}`);
 
-    const launchArgs = this.options.launchArgs
-      ? [...this.options.launchArgs]
-      : ['--disable-extensions'];
+    // Per-worker user-data and extensions dirs go in first: concurrent VS Code
+    // instances never share state and nothing lands at the CWD default. User
+    // launchArgs append last so they win by ordering.
+    const launchArgs: string[] = [
+      `--extensions-dir=${path.join(this.profilePath, 'extensions')}`,
+      `--user-data-dir=${path.join(this.profilePath, 'user-data')}`
+    ];
 
     const debugArg = this.createDebugLaunchArg();
     if (debugArg) {
       launchArgs.push(debugArg);
     }
 
-    // Use a per-worker profile directory under the cache folder so concurrent
-    // VS Code instances don't share state; test-electron skips its cwd-based
-    // defaults when these args are present.
-    if (!hasLaunchArg('extensions-dir', launchArgs)) {
-      launchArgs.push(`--extensions-dir=${path.join(this.profilePath, 'extensions')}`);
-    }
-
-    if (!hasLaunchArg('user-data-dir', launchArgs)) {
-      launchArgs.push(`--user-data-dir=${path.join(this.profilePath, 'user-data')}`);
-    }
+    launchArgs.push(...(this.options.launchArgs ?? ['--disable-extensions']));
 
     // VS Code's Vitest extension runs test processes under Electron-as-Node.
     // The spawned VS Code must start as Electron, not inherit that mode.
@@ -162,11 +159,8 @@ class VSCodeExtensionHostWorker implements PoolWorker {
 
     try {
       if (this.run) {
-        await withTimeout(
-          this.run,
-          5_000,
-          'Timed out waiting for VS Code to close after the Vitest worker stopped.'
-        );
+        // No timeout: vitest's own teardownTimeout bounds the whole pool.
+        await this.run;
       }
     } catch (error) {
       if (!this.isVSCodeTestRunFailure(error)) {
@@ -299,10 +293,6 @@ function isBridgeReadyMessage(message: unknown) {
   return typeof message === 'object'
     && message !== null
     && (message as { __vscode_vitest_bridge_ready__?: boolean }).__vscode_vitest_bridge_ready__ === true;
-}
-
-function hasLaunchArg(name: string, args: string[]) {
-  return args.some(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
