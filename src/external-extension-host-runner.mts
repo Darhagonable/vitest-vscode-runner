@@ -31,9 +31,6 @@ export async function run(): Promise<void> {
       },
       deserialize: data => data,
       serialize: data => data,
-      teardown: () => {
-        resolve();
-      },
       setup: setupEnvironment,
       runTests: (state, traces) => runBaseTests('run', state, traces),
       collectTests: (state, traces) => runBaseTests('collect', state, traces)

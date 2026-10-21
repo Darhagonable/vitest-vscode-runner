@@ -227,6 +227,4 @@ The sample suite intentionally contains one failing test so file-level and test-
 
 ## Current Limits
 
-- Watch mode is not a target yet.
-- Test execution is forced to one worker because the VS Code extension host is the worker.
-- The extension host bridge currently uses a TCP connection to report back to the external Vitest process.
+- The extension host bridge uses a TCP connection to report back to the external Vitest process.
