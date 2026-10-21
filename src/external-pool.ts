@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import {
@@ -24,6 +26,7 @@ export interface VSCodePoolOptions {
   vscodeExecutablePath?: string;
   launchArgs?: string[];
   debug?: boolean | VSCodeDebugOptions;
+  reuseWorker?: boolean;
   startupTimeoutMs?: number;
 }
 
@@ -81,6 +84,7 @@ class VSCodeExtensionHostWorker {
   private server: net.Server | undefined;
   private ipc: FramedIpc | undefined;
   private run: VSCodeRun | undefined;
+  private profilePath: string | undefined;
   private stopping = false;
 
   constructor(private readonly options: VSCodePoolOptions) {}
@@ -117,10 +121,12 @@ class VSCodeExtensionHostWorker {
 
     const { server, port, connected } = await this.createServer();
     this.server = server;
+    this.profilePath = path.join(this.options.cachePath ?? '.', `profile-${randomUUID().slice(0, 8)}`);
 
     this.run = await launchVSCodeTests({
       vscodeExecutablePath: this.options.vscodeExecutablePath,
       cachePath: this.options.cachePath,
+      profilePath: this.profilePath,
       extensionDevelopmentPath: this.options.extensionDevelopmentPath,
       version: this.options.version,
       extensionTestsPath: this.options.extensionTestsPath,
@@ -191,10 +197,15 @@ class VSCodeExtensionHostWorker {
       this.run = undefined;
       this.stopping = false;
     }
+
+    if (this.profilePath) {
+      await rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
+      this.profilePath = undefined;
+    }
   }
 
   canReuse(_task: unknown): boolean {
-    return true;
+    return this.options.reuseWorker !== false;
   }
 
   private async createServer() {
@@ -265,6 +276,11 @@ class VSCodeExtensionHostWorker {
     this.ipc?.destroy();
     this.server?.close();
 
+    if (this.profilePath) {
+      void rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
+      this.profilePath = undefined;
+    }
+
     this.ipc = undefined;
     this.server = undefined;
     this.run = undefined;
@@ -295,9 +311,10 @@ function isBridgeReadyMessage(message: unknown) {
 
 interface VSCodeLaunchOptions extends VSCodePoolOptions {
   extensionTestsEnv?: Record<string, string>;
+  profilePath?: string;
 }
 
-function createLaunchArgs(options: VSCodePoolOptions) {
+export function createLaunchArgs(options: VSCodePoolOptions & { profilePath?: string }) {
   const args = options.launchArgs
     ? [...options.launchArgs]
     : ['--disable-extensions'];
@@ -307,14 +324,17 @@ function createLaunchArgs(options: VSCodePoolOptions) {
     args.push(debugArg);
   }
 
-  // Use the downloaded cache folder for profile data; test-electron skips its
-  // cwd-based defaults when these args are present.
+  // Use a per-worker profile directory under the cache folder so concurrent
+  // VS Code instances don't share state; test-electron skips its cwd-based
+  // defaults when these args are present.
+  const profileBase = options.profilePath ?? options.cachePath ?? '.';
+
   if (!hasLaunchArg('extensions-dir', args)) {
-    args.push(`--extensions-dir=${path.join(options.cachePath ?? '.', 'extensions')}`);
+    args.push(`--extensions-dir=${path.join(profileBase, 'extensions')}`);
   }
 
   if (!hasLaunchArg('user-data-dir', args)) {
-    args.push(`--user-data-dir=${path.join(options.cachePath ?? '.', 'user-data')}`);
+    args.push(`--user-data-dir=${path.join(profileBase, 'user-data')}`);
   }
 
   return args;

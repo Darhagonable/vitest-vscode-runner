@@ -16,10 +16,7 @@ export interface VSCodeExtensionHostPluginOptions {
   vscodeExecutablePath?: string;
   launchArgs?: string[];
   debug?: boolean | VSCodeDebugOptions;
-  disableConsoleIntercept?: boolean;
-  fileParallelism?: boolean;
-  isolate?: boolean;
-  maxWorkers?: number;
+  reuseWorker?: boolean;
   startupTimeoutMs?: number;
 }
 
@@ -49,10 +46,6 @@ export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): 
 
       poolOptions = createPoolOptions(root, options);
       test.pool = createVSCodeExtensionHostPool(poolOptions);
-      test.disableConsoleIntercept ??= options.disableConsoleIntercept ?? true;
-      test.fileParallelism ??= options.fileParallelism ?? false;
-      test.isolate ??= options.isolate ?? false;
-      test.maxWorkers ??= options.maxWorkers ?? 1;
     },
     async configResolved() {
       if (!poolOptions || poolOptions.vscodeExecutablePath) {
@@ -122,6 +115,7 @@ function createPoolOptions(root: string, options: VSCodeExtensionHostPluginOptio
     vscodeExecutablePath: resolveOptionalPath(root, options.vscodeExecutablePath),
     launchArgs: options.launchArgs,
     debug: options.debug,
+    reuseWorker: options.reuseWorker ?? true,
     startupTimeoutMs: options.startupTimeoutMs
   };
 }
