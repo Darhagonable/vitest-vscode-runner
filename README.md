@@ -167,11 +167,16 @@ src/
   framed-ipc.ts                     small framed TCP protocol
 
 tests/
-  sample-extension/                 fixture VS Code extension: the dev-extension host
+  vscode-worker.test.ts             e2e driver: starts inner Vitest instances
+                                    on the sample project (run and watch)
+  unit/                             transport unit tests
+  sample-extension/                 fixture VS Code extension: the dev-extension
+                                    host, exercised only by the inner instances
     tests/                          sample Vitest tests
-    vitest.config.ts                dogfood config using the plugin
+    vitest.config.ts                consumer config using the plugin
 
-vitest.config.ts                    workspace config running the sample-extension project
+vitest.config.ts                    outer suite (driver + unit tests); the plugin
+                                    itself is only loaded by the inner instances
 ```
 
 ## Scripts

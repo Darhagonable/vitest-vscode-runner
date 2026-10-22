@@ -1,9 +1,17 @@
 import * as vscode from 'vscode';
+import { appendFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { activate } from '../src/extension';
 
 describe('vscode API', () => {
   it('exposes the extension host API', () => {
+    // Env-gated marker for the repo's watch-mode e2e driver: one line per run.
+    const marker = process.env.VSCODE_RUNNER_WATCH_MARKER;
+
+    if (marker) {
+      appendFileSync(marker, 'run\n');
+    }
+
     expect(typeof vscode.window.createOutputChannel).toBe('function');
     expect(typeof vscode.commands.executeCommand).toBe('function');
   });

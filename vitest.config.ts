@@ -2,14 +2,6 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    projects: [
-      {
-        test: {
-          name: 'unit',
-          include: ['tests/unit/**/*.test.ts']
-        }
-      },
-      'tests/sample-extension'
-    ]
+    include: ['tests/*.test.ts', 'tests/unit/**/*.test.ts']
   }
 });
