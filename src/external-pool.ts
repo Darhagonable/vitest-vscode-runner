@@ -141,7 +141,7 @@ class VSCodeExtensionHostWorker implements PoolWorker {
         'Timed out waiting for the VS Code extension-host Vitest bridge to connect.'
       );
     } catch (error) {
-      this.cleanupAfterFailedStart();
+      await this.cleanupAfterFailedStart();
       throw error;
     }
 
@@ -171,11 +171,11 @@ class VSCodeExtensionHostWorker implements PoolWorker {
       this.server = undefined;
       this.run = undefined;
       this.stopping = false;
-    }
 
-    if (this.profilePath) {
-      await rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
-      this.profilePath = undefined;
+      if (this.profilePath) {
+        await rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
+        this.profilePath = undefined;
+      }
     }
   }
 
@@ -195,9 +195,19 @@ class VSCodeExtensionHostWorker implements PoolWorker {
   }
 
   private async createServer() {
+    const server = net.createServer();
 
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', () => resolve());
+      server.once('error', error => reject(new Error('Could not start the local TCP server for the VS Code Vitest worker.', { cause: error })));
+      server.listen(0, '127.0.0.1');
+    });
 
+    const address = server.address();
 
+    if (!address || typeof address === 'string') {
+      throw new Error('Could not allocate TCP port for VS Code Vitest worker.');
+    }
 
     let resolveConnected: () => void = () => {};
     let rejectConnected: (reason?: any) => void = () => {};
@@ -206,7 +216,9 @@ class VSCodeExtensionHostWorker implements PoolWorker {
       rejectConnected = reject;
     });
 
-    const server = net.createServer(socket => {
+    server.on('error', rejectConnected);
+
+    server.on('connection', socket => {
       let bridgeReady = false;
       this.ipc = new FramedIpc(socket);
       this.ipc.on('message', message => {
@@ -237,14 +249,6 @@ class VSCodeExtensionHostWorker implements PoolWorker {
       });
     });
 
-    server.on('error', rejectConnected);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-    const address = server.address();
-
-    if (!address || typeof address === 'string') {
-      throw new Error('Could not allocate TCP port for VS Code Vitest worker.');
-    }
-
     return {
       server,
       port: address.port,
@@ -257,13 +261,13 @@ class VSCodeExtensionHostWorker implements PoolWorker {
       && path.basename(runnerPath).startsWith('external-extension-host-runner');
   }
 
-  private cleanupAfterFailedStart() {
+  private async cleanupAfterFailedStart() {
     this.stopping = true;
     this.ipc?.destroy();
     this.server?.close();
 
     if (this.profilePath) {
-      void rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
+      await rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
       this.profilePath = undefined;
     }
 
