@@ -1,7 +1,7 @@
-import { defineProject } from 'vitest/config';
+import { defineConfig } from 'vitest/config';
 import { vscodeExtensionHost } from '../../dist/index.js';
 
-export default defineProject({
+export default defineConfig({
   plugins: [
     vscodeExtensionHost({
       version: 'stable',
