@@ -2,17 +2,19 @@
  * E2E driver for the VS Code extension-host runner.
  *
  * The outer suite never loads the plugin itself: the sample-extension
- * project is exercised exclusively through inner Vitest instances started
- * here with vitest/node's startVitest — the same pattern vitest's own test
- * suite uses. The inner instance's root is tests/sample-extension, so it
- * cannot see this file or the unit tests (no recursion, no shared files).
+ * project is exercised exclusively through one inner Vitest instance in
+ * watch mode (vitest/node's startVitest, the same pattern vitest's own
+ * test suite uses). The inner instance's root is tests/sample-extension,
+ * so it cannot see this file or the unit tests (no recursion, no shared
+ * files). Every test below is an observation of that single session:
+ * result reporting, console forwarding, watch reruns, and host reuse.
  */
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startVitest, type Vitest } from 'vitest/node';
-import { afterEach, describe, expect, it } from 'vitest';
+import { startVitest, type Reporter, type Vitest } from 'vitest/node';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sampleRoot = join(repoRoot, 'tests/sample-extension');
@@ -22,29 +24,52 @@ const sampleTestFile = join(sampleRoot, 'tests/vscode-api-pass.test.ts');
 // this env var points at a file, so watch reruns can be counted without
 // side effects in normal runs.
 const markerEnv = 'VSCODE_RUNNER_WATCH_MARKER';
+const consoleEnv = 'VSCODE_RUNNER_CONSOLE_E2E';
+
+// No-op reporter: every hook is optional, so the inner session prints
+// nothing — except user console logs, which are captured (not printed) for
+// the forwarding assertion. All other assertions read ctx.state, the marker
+// file, or the exit-code tracker instead of printed output.
+function createSilentReporter(logs: string[]): Reporter {
+  return {
+    onUserConsoleLog(log) {
+      logs.push(log.content);
+    }
+  };
+}
+
+/*
+ * @vscode/test-electron prints one "Exit code:" line per VS Code instance
+ * from this process via console.log. Counting them across the session
+ * counts spawned extension hosts; counted lines are swallowed so the outer
+ * reporter does not re-print them.
+ */
+function trackExitCodes() {
+  const original = console.log;
+  let count = 0;
+
+  console.log = (...args: unknown[]) => {
+    if (String(args[0]).startsWith('Exit code:')) {
+      count++;
+      return;
+    }
+
+    original(...args);
+  };
+
+  return {
+    count: () => count,
+    restore() {
+      console.log = original;
+    }
+  };
+}
 
 let ctx: Vitest | undefined;
 let originalSource: string | undefined;
 let markerFile: string | undefined;
-
-afterEach(async () => {
-  if (originalSource !== undefined) {
-    await writeFile(sampleTestFile, originalSource);
-    originalSource = undefined;
-  }
-
-  if (ctx) {
-    await ctx.close();
-    ctx = undefined;
-  }
-
-  if (markerFile) {
-    await rm(markerFile, { force: true });
-    delete process.env[markerEnv];
-    markerFile = undefined;
-  }
-});
-
+let exitCodes: ReturnType<typeof trackExitCodes> | undefined;
+let consoleLogs: string[] = [];
 async function markerCount(): Promise<number> {
   if (!markerFile) {
     return 0;
@@ -70,50 +95,62 @@ async function waitForMarkers(minimum: number, timeoutMs: number, message: strin
   }
 }
 
-/*
- * @vscode/test-electron prints one "Exit code:" line per VS Code instance
- * from this process via console.log. Counting them during a session counts
- * spawned extension hosts.
- */
-function trackExitCodes() {
-  const original = console.log;
-  let count = 0;
+beforeAll(async () => {
+  markerFile = join(tmpdir(), `vscode-runner-watch-${process.pid}-${Date.now()}.log`);
+  process.env[markerEnv] = markerFile;
+  process.env[consoleEnv] = `vscode-runner-console-${process.pid}-${Date.now()}`;
 
-  console.log = (...args: unknown[]) => {
-    if (String(args[0]).startsWith('Exit code:')) {
-      count++;
-    }
+  exitCodes = trackExitCodes();
+  consoleLogs = [];
 
-    original(...args);
-  };
+  ctx = await startVitest(
+    [],
+    { root: sampleRoot, watch: true, reporters: [createSilentReporter(consoleLogs)] }
+  );
 
-  return {
-    count: () => count,
-    restore() {
-      console.log = original;
-    }
-  };
-}
+  await waitForMarkers(1, 90_000, 'initial sample run never executed in the extension host.');
+}, 120_000);
+
+afterAll(async () => {
+  if (originalSource !== undefined) {
+    await writeFile(sampleTestFile, originalSource);
+    originalSource = undefined;
+  }
+
+  if (ctx) {
+    await ctx.close();
+    ctx = undefined;
+  }
+
+  exitCodes?.restore();
+
+  if (markerFile) {
+    await rm(markerFile, { force: true });
+    delete process.env[markerEnv];
+    markerFile = undefined;
+  }
+
+  delete process.env[consoleEnv];
+});
 
 describe('vscode worker', () => {
-  it('runs the sample-extension suite through the plugin', { timeout: 180_000 }, async () => {
-    ctx = await startVitest('test', [], { root: sampleRoot });
+  it('reports pass and fail results from the extension host', () => {
+    const files = ctx!.state.getFiles();
+    const passFile = files.find(file => file.name.includes('vscode-api-pass'));
+    const failFile = files.find(file => file.name.includes('intentional-fail'));
 
-    const files = ctx.state.getFiles();
-
-    expect(files.length).toBeGreaterThan(0);
-    for (const file of files) {
-      expect(file.result?.state, `${file.name} should pass`).toBe('pass');
-    }
+    expect(passFile, 'passing sample file should have run').toBeDefined();
+    expect(failFile, 'failing sample file should have run').toBeDefined();
+    expect(passFile?.result?.state, 'success must propagate to the outer vitest').toBe('pass');
+    expect(failFile?.result?.state, 'unexpected failure must propagate to the outer vitest').toBe('fail');
   });
 
-  it('reruns tests inside the extension host on file change', { timeout: 180_000 }, async () => {
-    markerFile = join(tmpdir(), `vscode-runner-watch-${process.pid}-${Date.now()}.log`);
-    process.env[markerEnv] = markerFile;
+  it('forwards console output from the extension host', () => {
+    const token = process.env[consoleEnv]!;
+    expect(consoleLogs.some(log => log.includes(token)), 'console.log inside the host must reach vitest').toBe(true);
+  });
 
-    ctx = await startVitest('test', [], { root: sampleRoot, watch: true });
-    await waitForMarkers(1, 90_000, 'initial sample run never executed in the extension host.');
-
+  it('reruns tests inside the extension host on file change', { timeout: 120_000 }, async () => {
     originalSource = await readFile(sampleTestFile, 'utf8');
     // Content change, not just mtime: the watcher reliably schedules a rerun.
     await writeFile(sampleTestFile, originalSource + '\n// watch e2e: trigger rerun\n');
@@ -121,27 +158,11 @@ describe('vscode worker', () => {
     await waitForMarkers(2, 60_000, 'watch rerun never executed in the extension host.');
   });
 
-  it.fails('keeps exactly one warm VS Code host across a watch session', { timeout: 180_000 }, async () => {
-    markerFile = join(tmpdir(), `vscode-runner-watch-${process.pid}-${Date.now()}.log`);
-    process.env[markerEnv] = markerFile;
-
-    // Track for the whole session: hosts spawned per test file exit early,
-    // long before close().
-    const exitCodes = trackExitCodes();
-    const watch = await startVitest('test', [], { root: sampleRoot, watch: true });
-    ctx = watch;
-    await waitForMarkers(1, 90_000, 'initial sample run never executed in the extension host.');
-
-    originalSource = await readFile(sampleTestFile, 'utf8');
-    await writeFile(sampleTestFile, originalSource + '\n// watch e2e: trigger rerun\n');
-    await waitForMarkers(2, 60_000, 'watch rerun never executed in the extension host.');
-
-    await watch.close();
-    ctx = undefined;
-    exitCodes.restore();
-
-    // One warm extension-host worker means exactly one VS Code instance for
-    // the whole session. Passes once worker reuse is the effective default.
-    expect(exitCodes.count()).toBe(1);
+  it.fails('keeps exactly one warm VS Code host across the session', () => {
+    // Counted before close: with today's per-file workers, hosts exit during
+    // the runs. One warm extension-host worker means exactly one VS Code
+    // instance for the whole session. Passes once worker reuse is the
+    // effective default.
+    expect(exitCodes!.count()).toBe(1);
   });
 });
