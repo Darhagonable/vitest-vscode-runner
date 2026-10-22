@@ -5,11 +5,18 @@ import { activate } from '../src/extension';
 
 describe('vscode API', () => {
   it('exposes the extension host API', () => {
-    // Env-gated marker for the repo's watch-mode e2e driver: one line per run.
+    // Env-gated markers for the repo's watch-mode e2e driver: one line and
+    // one console.log per run, only when the driver sets these.
     const marker = process.env.VSCODE_RUNNER_WATCH_MARKER;
 
     if (marker) {
       appendFileSync(marker, 'run\n');
+    }
+
+    const consoleProbe = process.env.VSCODE_RUNNER_CONSOLE_E2E;
+
+    if (consoleProbe) {
+      console.log(consoleProbe);
     }
 
     expect(typeof vscode.window.createOutputChannel).toBe('function');
