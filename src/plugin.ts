@@ -25,12 +25,6 @@ export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): 
   return {
     name: 'vitest-vscode-extension-host',
     config(config: ViteUserConfig) {
-      const root = resolveRoot(config.root);
-
-      const vscodeShimPath = path.join(resolvePath(root, options.cachePath ?? '.vscode-test'), vscodeShimFileName);
-      ensureVSCodeShimFile(vscodeShimPath);
-      vscodeShimId = normalizeModuleId(vscodeShimPath);
-
       if (config.test?.pool !== undefined) {
         throw new Error('[vitest-vscode-extension-host] test.pool is managed by vscodeExtensionHost().');
       }
@@ -38,13 +32,19 @@ export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): 
       config.test = { ...config.test, pool: createVSCodeExtensionHostPool(options) };
     },
     async configResolved(resolved) {
+      // Anchor everything at the resolved project root. The user config's
+      // `root` is not resolved (and may be undefined) in `config`, which
+      // would otherwise leak the cache into the process working directory.
+      const vscodeShimPath = path.join(resolvePath(resolved.root, options.cachePath ?? '.vscode-test'), vscodeShimFileName);
+      ensureVSCodeShimFile(vscodeShimPath);
+      vscodeShimId = normalizeModuleId(vscodeShimPath);
+
       if (options.vscodeExecutablePath) {
         return;
       }
 
       // Warm the download before any worker starts so a cold fetch cannot
-      // race the bridge startup timeout. Anchor the cache at the project
-      // root so nothing leaks outside the package in monorepos.
+      // race the bridge startup timeout.
       options.vscodeExecutablePath = await downloadVSCodeExecutable({
         ...options,
         cachePath: path.resolve(resolved.root, options.cachePath ?? '.vscode-test')
@@ -107,14 +107,6 @@ export async function downloadVSCodeExecutable(options: Pick<VSCodeExtensionHost
     cachePath: options.cachePath,
     version: process.env.VSCODE_VERSION ?? options.version
   });
-}
-
-function resolveRoot(root: string | undefined) {
-  if (!root) {
-    return process.cwd();
-  }
-
-  return path.isAbsolute(root) ? root : path.resolve(process.cwd(), root);
 }
 
 function resolvePath(root: string, value: string) {
