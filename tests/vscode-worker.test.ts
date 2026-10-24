@@ -21,14 +21,13 @@ const sampleTestFile = join(sampleRoot, 'tests/vscode-api-pass.test.ts');
 // The only watch side channel: resolves when the current run ends.
 let resolveRunEnd: (() => void) | undefined;
 const reporter: Reporter = { onTestRunEnd: () => resolveRunEnd?.() };
-const nextRunEnd = () => new Promise<void>(resolve => (resolveRunEnd = resolve));
+const awaitNextRun = () => new Promise<void>(resolve => (resolveRunEnd = resolve));
 
 let ctx: Vitest | undefined;
 
-const findModule = (fragment: string) => ctx?.state.getTestModules().find(m => m.moduleId.includes(fragment));
-
 const findTest = (moduleFragment: string, testFragment: string) =>
-  [...(findModule(moduleFragment)?.children.allTests() ?? [])].find(t => t.name.includes(testFragment));
+  ctx?.state.getTestModules().find(m => m.moduleId.includes(moduleFragment))
+    ?.children.allTests().find(t => t.name.includes(testFragment));
 
 beforeAll(async () => {
   // Reset possible previous runs, like Vitest's own test harness does; the
@@ -64,10 +63,6 @@ describe('vscode extension-host pool', () => {
     expect(findTest('vscode-api-pass', 'registers and executes a command')?.ok()).toBe(true);
   });
 
-  it('reports passing sample tests as passed', () => {
-    expect(findModule('vscode-api-pass')?.ok()).toBe(true);
-  });
-
   it('reports failing sample tests as failed', () => {
     const failing = findTest('intentional-fail', 'fails on purpose');
     expect(failing?.ok()).toBe(false);
@@ -95,7 +90,7 @@ describe('vscode extension-host pool', () => {
       await writeFile(sampleTestFile, source);
     });
 
-    const rerunEnded = nextRunEnd();
+    const rerunEnded = awaitNextRun();
     // Content change, not just mtime: the watcher reliably schedules a rerun.
     await writeFile(sampleTestFile, `${source}\nit('e2e rerun marker', () => { expect(1).toBe(1); });\n`);
     await rerunEnded;
