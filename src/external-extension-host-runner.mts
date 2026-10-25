@@ -1,5 +1,5 @@
 import * as net from 'node:net';
-import { FramedIpc } from './framed-ipc.js';
+import { LineIpc } from './line-ipc.js';
 
 export async function run(): Promise<void> {
   const port = Number(process.env.VITEST_RUNNER_IPC_PORT);
@@ -10,7 +10,7 @@ export async function run(): Promise<void> {
   }
 
   const socket = net.connect({ host, port });
-  const ipc = new FramedIpc(socket);
+  const ipc = new LineIpc(socket);
   const stopped = new Promise<void>((resolve, reject) => {
     socket.once('connect', resolve);
     socket.once('error', reject);

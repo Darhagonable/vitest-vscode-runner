@@ -10,7 +10,7 @@ import {
   SilentReporter,
   TestRunFailedError
 } from '@vscode/test-electron';
-import { FramedIpc } from './framed-ipc.js';
+import { LineIpc } from './line-ipc.js';
 import type { PoolOptions, PoolRunnerInitializer, PoolWorker } from 'vitest/node';
 import type { VSCodeExtensionHostPluginOptions } from './plugin.js';
 
@@ -30,7 +30,7 @@ class VSCodeExtensionHostWorker implements PoolWorker {
   private readonly events = new EventEmitter();
   private readonly pendingErrors: unknown[] = [];
   private server: net.Server | undefined;
-  private ipc: FramedIpc | undefined;
+  private ipc: LineIpc | undefined;
   private run: Promise<number> | undefined;
   private profilePath: string | undefined;
   private stopping = false;
@@ -220,7 +220,7 @@ class VSCodeExtensionHostWorker implements PoolWorker {
 
     server.on('connection', socket => {
       let bridgeReady = false;
-      this.ipc = new FramedIpc(socket);
+      this.ipc = new LineIpc(socket);
       this.ipc.on('message', message => {
         if (isBridgeReadyMessage(message)) {
           bridgeReady = true;
