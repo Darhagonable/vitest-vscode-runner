@@ -10,9 +10,9 @@ import {
   SilentReporter,
   TestRunFailedError
 } from '@vscode/test-electron';
-import { LineIpc } from './line-ipc.js';
+import { LineIpc } from './line-ipc';
 import type { PoolOptions, PoolRunnerInitializer, PoolWorker } from 'vitest/node';
-import type { VSCodeExtensionHostPluginOptions } from './plugin.js';
+import type { VSCodeExtensionHostPluginOptions } from './plugin';
 
 // The bundled bridge runner executed inside the VS Code extension host.
 const runnerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'external-extension-host-runner.mjs');

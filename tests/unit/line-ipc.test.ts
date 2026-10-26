@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as net from 'node:net';
-import { LineIpc } from '../../src/line-ipc.js';
+import { LineIpc } from '../../src/line-ipc';
 
 function createSocketPair(): Promise<{ a: LineIpc; b: LineIpc; close: () => void }> {
   return new Promise((resolve, reject) => {

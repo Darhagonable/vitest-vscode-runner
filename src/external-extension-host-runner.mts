@@ -1,5 +1,5 @@
 import * as net from 'node:net';
-import { LineIpc } from './line-ipc.js';
+import { LineIpc } from './line-ipc';
 
 export async function run(): Promise<void> {
   const port = Number(process.env.VITEST_RUNNER_IPC_PORT);

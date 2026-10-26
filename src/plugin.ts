@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import type { Plugin, ViteUserConfig } from 'vitest/config';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
-import { createVSCodeExtensionHostPool } from './external-pool.js';
+import { createVSCodeExtensionHostPool } from './external-pool';
 
 export interface VSCodeExtensionHostPluginOptions {
   version?: string;
