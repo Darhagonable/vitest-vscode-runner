@@ -4,12 +4,12 @@
   "private": false,
   "type": "module",
   "description": "Vitest plugin for running VS Code extension tests inside the extension host.",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
     }
   },
   "files": [
@@ -25,12 +25,13 @@
   "devDependencies": {
     "@types/node": "^26.0.0",
     "@types/vscode": "^1.120.0",
-    "typescript": "^6.0.3",
+    "tsdown": "^0.23.0",
+    "typescript": "^6.0.0",
     "vitest": "^5.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/sample-extension/tsconfig.json",
+    "build": "tsdown",
+    "typecheck": "tsc",
     "test": "vitest run",
     "test:sample-extension": "vitest run --root tests/sample-extension"
   },

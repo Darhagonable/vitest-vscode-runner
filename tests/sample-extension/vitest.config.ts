@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { vscodeExtensionHost } from '../../dist/index.js';
+import { vscodeExtensionHost } from '../../dist/index.mjs';
 
 export default defineConfig({
   plugins: [
