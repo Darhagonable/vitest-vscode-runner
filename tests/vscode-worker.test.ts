@@ -18,6 +18,26 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sampleRoot = join(repoRoot, 'tests/sample-extension');
 const sampleTestFile = join(sampleRoot, 'tests/vscode-api-pass.test.ts');
 
+// Written by the sample tests from inside the extension host: the pid of the
+// process that ran them. Stable pid = warm reuse; distinct pids = per-file
+// extension hosts.
+const pidFileA = join(sampleRoot, '.e2e-host-pid-vscode-api-pass');
+const pidFileB = join(sampleRoot, '.e2e-host-pid-intentional-fail');
+
+// Watch-mode runs may interleave (e.g. a watcher restore-rerun); poll the
+// reported state until a condition holds instead of counting run events.
+const waitUntil = async (condition: () => boolean, timeoutMs = 90_000) => {
+  const deadline = Date.now() + timeoutMs;
+
+  while (!condition()) {
+    if (Date.now() > deadline) {
+      throw new Error('Timed out waiting for the watch-mode rerun to be reported.');
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+};
+
 // The only watch side channel: resolves when the current run ends.
 let resolveRunEnd: (() => void) | undefined;
 const reporter: Reporter = { onTestRunEnd: () => resolveRunEnd?.() };
@@ -85,6 +105,8 @@ describe('vscode extension-host pool', () => {
   });
 
   it('reruns tests inside the same extension host on file change', { timeout: 120_000 }, async () => {
+    const pidBefore = await readFile(pidFileA, 'utf8');
+
     const source = await readFile(sampleTestFile, 'utf8');
     onTestFinished(async () => {
       await writeFile(sampleTestFile, source);
@@ -96,5 +118,42 @@ describe('vscode extension-host pool', () => {
     await rerunEnded;
 
     expect(findTest('vscode-api-pass', 'e2e rerun marker')?.ok()).toBe(true);
+    // Same extension host process: the warm pool adopted this file's own
+    // instance instead of cold-booting a replacement.
+    expect(await readFile(pidFileA, 'utf8')).toBe(pidBefore);
+  });
+
+  it('keeps each test file in its own extension host across reruns', { timeout: 120_000 }, async () => {
+    const sourceA = await readFile(sampleTestFile, 'utf8');
+    const sampleFixtureFile = join(sampleRoot, 'tests/intentional-fail.test.ts');
+    const sourceB = await readFile(sampleFixtureFile, 'utf8');
+
+    onTestFinished(async () => {
+      await Promise.all([
+        writeFile(sampleTestFile, sourceA),
+        writeFile(sampleFixtureFile, sourceB)
+      ]);
+    });
+
+    const pidABefore = await readFile(pidFileA, 'utf8');
+    const pidBBefore = await readFile(pidFileB, 'utf8');
+    // Separate VS Code instances per file — no cross-file state leakage.
+    expect(pidABefore).not.toBe(pidBBefore);
+
+    await Promise.all([
+      writeFile(sampleTestFile, `${sourceA}\nit('e2e cross-file marker A', () => { expect(1).toBe(1); });\n`),
+      writeFile(sampleFixtureFile, `${sourceB}\nit('e2e cross-file marker B', () => { expect(1).toBe(1); });\n`)
+    ]);
+
+    // Watcher restore-reruns from earlier tests may interleave; wait until a
+    // run actually reports both markers rather than betting on run ordering.
+    await waitUntil(() =>
+      findTest('vscode-api-pass', 'e2e cross-file marker A')?.ok() === true
+      && findTest('intentional-fail', 'e2e cross-file marker B')?.ok() === true
+    );
+
+    // Each file returned to its own instance: stable pids on both sides.
+    expect(await readFile(pidFileA, 'utf8')).toBe(pidABefore);
+    expect(await readFile(pidFileB, 'utf8')).toBe(pidBBefore);
   });
 });

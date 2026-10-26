@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import type { Plugin, ViteUserConfig } from 'vitest/config';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
-import { createVSCodeExtensionHostPool } from './external-pool.js';
+import { createVSCodeExtensionHostPool, shutdownWarmConnections } from './external-pool.js';
 
 export interface VSCodeExtensionHostPluginOptions {
   version?: string;
@@ -30,6 +30,12 @@ export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): 
       }
 
       config.test = { ...config.test, pool: createVSCodeExtensionHostPool(options) };
+    },
+    // Vite server close: fires when vitest's vite server closes, after the
+    // pool is closed. Deterministic cleanup for parked VS Code instances —
+    // awaited so vitest exits only after every instance is gone.
+    async closeServer() {
+      await shutdownWarmConnections();
     },
     async configResolved(resolved) {
       const vscodeShimPath = path.join(resolvePath(resolved.root, options.cachePath ?? '.vscode-test'), vscodeShimFileName);
