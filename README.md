@@ -167,12 +167,42 @@ src/
   framed-ipc.ts                     small framed TCP protocol
 
 tests/
-  sample-extension/                 fixture VS Code extension: the dev-extension host
+  vscode-worker.test.ts             e2e suite: boots a single nested Vitest
+                                    instance (watch mode) on the sample project
+  unit/                             transport unit tests
+  sample-extension/                 fixture VS Code extension: the dev-extension
+                                    host, exercised only by the nested instance
     tests/                          sample Vitest tests
-    vitest.config.ts                dogfood config using the plugin
+    vitest.config.ts                consumer config using the plugin
 
-vitest.config.ts                    workspace config running the sample-extension project
+vitest.config.ts                    outer suite (e2e + unit tests); the plugin
+                                    itself is only loaded by the nested instance
 ```
+
+## Test Coverage
+
+`pnpm test` boots a single nested Vitest instance (watch mode) against
+`tests/sample-extension` — the same plugin setup a consumer would have —
+and verifies end to end that:
+
+- The VS Code instance is found in, or downloaded into,
+  `tests/sample-extension/.vscode-test` only; no `.vscode-test`
+  is created at the repo root.
+- Tests run inside/through the VS Code extension host.
+- Tests can access the `vscode` APIs.
+- The extension can be activated directly from source.
+- Tests can register and execute VS Code commands.
+- Vitest correctly reports a test inside the VS Code instance as passed.
+- Vitest correctly reports a test inside the VS Code instance as failed
+  (assertion errors and thrown runtime errors propagate).
+- Vitest correctly reports a test inside the VS Code instance as
+  expectedly failed (`it.fails` passes).
+- The plugin correctly forwards `console.log` output from inside the
+  VS Code instance to Vitest.
+- Watch mode works: changing a test file reruns it inside the same
+  VS Code instance.
+
+Unit tests for the IPC transport live in `tests/unit/`.
 
 ## Scripts
 
