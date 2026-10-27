@@ -19,14 +19,14 @@ export interface VSCodeExtensionHostPluginOptions {
 const vscodeShimFileName = '.vitest-vscode-extension-host-vscode.cjs';
 const vscodeShimSource = "module.exports = require('vscode');\n";
 
-export function vscodeExtensionHost(options: VSCodeExtensionHostPluginOptions): Plugin {
+export function vscodeRunner(options: VSCodeExtensionHostPluginOptions): Plugin {
   let vscodeShimId: string | undefined;
 
   return {
     name: 'vitest-vscode-extension-host',
     config(config: ViteUserConfig) {
       if (config.test?.pool !== undefined) {
-        throw new Error('[vitest-vscode-extension-host] test.pool is managed by vscodeExtensionHost().');
+        throw new Error('[vitest-vscode-extension-host] test.pool is managed by vscodeRunner().');
       }
 
       config.test = { ...config.test, pool: createVSCodeExtensionHostPool(options) };

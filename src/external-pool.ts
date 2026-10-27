@@ -19,13 +19,13 @@ const runnerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'exte
 
 export function createVSCodeExtensionHostPool(options: VSCodeExtensionHostPluginOptions): PoolRunnerInitializer {
   return {
-    name: 'vscodeExtensionHost',
+    name: 'vscodeRunner',
     createPoolWorker: (poolOptions: PoolOptions) => new VSCodeExtensionHostWorker(poolOptions, options)
   };
 }
 
 class VSCodeExtensionHostWorker implements PoolWorker {
-  readonly name = 'vscodeExtensionHost';
+  readonly name = 'vscodeRunner';
 
   private readonly events = new EventEmitter();
   private readonly pendingErrors: unknown[] = [];

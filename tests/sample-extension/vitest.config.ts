@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitest/config';
-import { vscodeExtensionHost } from '../../dist/index.mjs';
+import { vscodeRunner } from 'vitest-vscode-runner';
 
 export default defineConfig({
   plugins: [
-    vscodeExtensionHost({
+    vscodeRunner({
       version: 'stable',
       launchArgs: ['--log', 'off', '--disable-gpu'],
     })

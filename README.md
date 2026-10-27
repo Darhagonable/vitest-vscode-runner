@@ -25,11 +25,11 @@ Vitest CLI / IDE
 
 ```ts
 import { defineConfig } from 'vitest/config';
-import { vscodeExtensionHost } from 'vitest-vscode-runner';
+import { vscodeRunner } from 'vitest-vscode-runner';
 
 export default defineConfig({
   plugins: [
-    vscodeExtensionHost({
+    vscodeRunner({
       version: '1.121.0'
     })
   ],
@@ -47,7 +47,7 @@ The plugin resolves the VS Code test executable during Vitest's config startup v
 If VS Code is provisioned separately, pass its executable path to skip `@vscode/test-electron` downloads:
 
 ```ts
-vscodeExtensionHost({
+vscodeRunner({
   vscodeExecutablePath: '/path/to/Code'
 });
 ```
@@ -59,7 +59,7 @@ This avoids a subtle platform trap in Vitest's external-module path. The relevan
 Useful options:
 
 ```ts
-vscodeExtensionHost({
+vscodeRunner({
   launchArgs: ['--disable-extensions'],
   startupTimeoutMs: 30_000
 });

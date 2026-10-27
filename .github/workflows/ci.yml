@@ -15,28 +15,22 @@ jobs:
         vscode-version: [stable, insiders]
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm ci
 
-      - name: Run typecheck
-        run: pnpm typecheck
+      - run: pnpm run build
 
-      - name: Run build
-        run: pnpm build
+      - run: pnpm run typecheck
 
       - name: Run tests
-        run: xvfb-run -a pnpm exec vitest --run
+        run: dbus-run-session -- xvfb-run pnpm run test
         env:
           VSCODE_VERSION: ${{ matrix.vscode-version }}
