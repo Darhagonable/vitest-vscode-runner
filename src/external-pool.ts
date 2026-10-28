@@ -81,12 +81,18 @@ class VSCodeExtensionHostWorker implements PoolWorker {
     this.profilePath = path.join(os.tmpdir(), `vsct-${randomUUID().slice(0, 8)}`);
 
     // Per-worker user-data and extensions dirs go in first: concurrent VS Code
-    // instances never share state and nothing lands at the CWD default. User
+    // instances never share state and nothing lands at the CWD default.
+    // Skipped under reuseMachineInstall, which runTests() also honors —
+    // otherwise it would inject its own default profile dirs. User
     // launchArgs append last so they win by ordering.
-    const launchArgs: string[] = [
-      `--extensions-dir=${path.join(this.profilePath, 'extensions')}`,
-      `--user-data-dir=${path.join(this.profilePath, 'user-data')}`
-    ];
+    const launchArgs: string[] = [];
+
+    if (!this.options.reuseMachineInstall) {
+      launchArgs.push(
+        `--extensions-dir=${path.join(this.profilePath, 'extensions')}`,
+        `--user-data-dir=${path.join(this.profilePath, 'user-data')}`
+      );
+    }
 
     const debugArg = this.createDebugLaunchArg();
     if (debugArg) {
@@ -104,8 +110,9 @@ class VSCodeExtensionHostWorker implements PoolWorker {
       vscodeExecutablePath: this.options.vscodeExecutablePath,
       version: process.env.VSCODE_VERSION ?? this.options.version,
       cachePath,
-      extensionDevelopmentPath: root,
+      extensionDevelopmentPath: this.options.extensionDevelopmentPath ?? root,
       extensionTestsPath: runnerPath,
+      reuseMachineInstall: this.options.reuseMachineInstall,
       extensionTestsEnv: {
         VITEST_RUNNER_IPC_HOST: '127.0.0.1',
         VITEST_RUNNER_IPC_PORT: String(port)
@@ -136,8 +143,7 @@ class VSCodeExtensionHostWorker implements PoolWorker {
           connectedBeforeExit,
           exitedBeforeConnect
         ]),
-        this.options.startupTimeoutMs
-          ?? (this.poolOptions.project.config.inspector.waitForDebugger ? 300_000 : 30_000),
+        this.poolOptions.project.config.inspector.waitForDebugger ? 300_000 : 30_000,
         'Timed out waiting for the VS Code extension-host Vitest bridge to connect.'
       );
     } catch (error) {

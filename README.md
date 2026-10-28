@@ -60,12 +60,14 @@ Useful options:
 
 ```ts
 vscodeRunner({
+  extensionDevelopmentPath: 'path/to/extension', // defaults to the project root
   launchArgs: ['--disable-extensions'],
-  startupTimeoutMs: 30_000
+  platform: 'linux-x64',
+  timeout: 60_000
 });
 ```
 
-Pin the VS Code build with `version` (`'stable'`, `'insiders'`, or an exact version like `'1.121.0'`). The `VSCODE_VERSION` environment variable overrides it when set, so CI matrices can vary the build without changing committed config.
+Pin the VS Code build with `version` (`'stable'`, `'insiders'`, or an exact version like `'1.121.0'`). The `VSCODE_VERSION` environment variable overrides it when set, so CI matrices can vary the build without changing committed config. `platform` and `timeout` are forwarded to the `@vscode/test-electron` download.
 
 ## Debugging
 
@@ -81,7 +83,7 @@ Run with `--inspect` or `--inspect-brk` exactly as you would for any vitest proj
 vitest --inspect-brk
 ```
 
-The plugin translates vitest's inspector settings into `--inspect-brk-extensions=9229` on the VS Code process, pausing the extension host at startup until a debugger attaches. `startupTimeoutMs` is automatically raised to 5 minutes under `--inspect-brk` so the bridge has time to connect after you attach. Use a custom port with `--inspect-port=9230`.
+The plugin translates vitest's inspector settings into `--inspect-brk-extensions=9229` on the VS Code process, pausing the extension host at startup until a debugger attaches. The bridge connect timeout is automatically raised to 5 minutes under `--inspect-brk` so it has time to connect after you attach. Use a custom port with `--inspect-port=9230`.
 
 ### Repo Debug Script
 
@@ -91,7 +93,7 @@ This repo includes a manual debugging script:
 pnpm run debug:extension-host
 ```
 
-It runs the suite with `vitest --inspect-brk`: the plugin translates vitest's inspector flag into `--inspect-brk-extensions=9229`, pausing the extension host at startup until a debugger attaches, with `startupTimeoutMs` raised to 5 minutes.
+It runs the suite with `vitest --inspect-brk`: the plugin translates vitest's inspector flag into `--inspect-brk-extensions=9229`, pausing the extension host at startup until a debugger attaches, with the bridge connect timeout raised to 5 minutes.
 
 ```ts
 vitest --run --inspect-brk --no-file-parallelism
