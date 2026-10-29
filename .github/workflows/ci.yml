@@ -8,29 +8,17 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        vscode-version: [stable, insiders]
+  linux:
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      os: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v6
+  windows:
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      os: windows-latest
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm ci
-
-      - run: pnpm run build
-
-      - run: pnpm run typecheck
-
-      - name: Run tests
-        run: dbus-run-session -- xvfb-run pnpm run test
-        env:
-          VSCODE_VERSION: ${{ matrix.vscode-version }}
+  macos:
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      os: macos-latest
