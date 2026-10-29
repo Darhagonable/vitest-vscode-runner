@@ -144,16 +144,16 @@ pnpm test:sample-extension
 pnpm typecheck
 ```
 
-| Path                              | Description                                                                                                   |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **`src/plugin.ts`**               | The vitest plugin: `vscodeRunner()` entry point, options, the `vscode` module shim, VS Code download pre-warm |
-| **`src/pool.ts`**                 | The custom pool: spawns VS Code per worker, owns the TCP server, speaks vitest's worker protocol              |
-| **`src/vscode-worker.ts`**        | The bridge: runs inside the extension host, connects back to the pool, executes the tests                     |
-| **`src/utils/ipc.ts`**            | Newline-delimited IPC over TCP, used by both sides |
-| **`src/index.ts`**                | Public exports                                                                                                |
-| **`tests/vscode-worker.test.ts`** | E2E suite: boots a nested vitest on the sample extension and asserts on its results                           |
-| **`tests/unit/`**                 | Unit tests                                                                                                    |
-| **`tests/sample-extension/`**     | Sample VS Code extension used as the fixture                                                                  |
+| Path                                | Description                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **`src/plugin.ts`**                 | The vitest plugin: `vscodeRunner()` entry point, options, the `vscode` module shim, VS Code download pre-warm |
+| **`src/pool.ts`**                   | The custom pool: spawns VS Code per worker, owns the TCP server, speaks vitest's worker protocol              |
+| **`src/vscode-worker.ts`**          | The bridge: runs inside the extension host, connects back to the pool, executes the tests                     |
+| **`src/utils/ipc.ts`**              | Newline-delimited IPC over TCP, used by both sides                                                            |
+| **`src/index.ts`**                  | Public exports                                                                                                |
+| **`tests/e2e/integration.test.ts`** | E2E suite: boots a nested vitest on the sample extension and asserts on its results                           |
+| **`tests/unit/`**                   | Unit tests                                                                                                    |
+| **`tests/_sample-extension/`**       | Sample VS Code extension used as the fixture                                                                  |
 
 ```mermaid
 sequenceDiagram

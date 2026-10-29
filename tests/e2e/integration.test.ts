@@ -2,21 +2,18 @@
  * E2E suite for the VS Code extension-host runner.
  *
  * Boots a single nested Vitest instance in watch mode on
- * tests/sample-extension — the same plugin setup a consumer has — and
+ * tests/_sample-extension — the same plugin setup a consumer has — and
  * asserts on the results it reports. startVitest resolves once the
  * initial run finished; the small deferred reporter below is only needed
  * to await the watch-mode rerun. There are no other side channels.
  */
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { startVitest, type Reporter, type Vitest } from 'vitest/node';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const sampleRoot = join(repoRoot, 'tests/sample-extension');
-const sampleTestFile = join(sampleRoot, 'tests/vscode-api-pass.test.ts');
+const sampleRoot = join(process.cwd(), 'tests/_sample-extension');
 
 // The only watch side channel: resolves when the current run ends.
 let resolveRunEnd: (() => void) | undefined;
@@ -44,7 +41,7 @@ afterAll(async () => {
 describe('vscode extension-host pool', () => {
   it('keeps the VS Code download inside the sample extension', () => {
     expect(existsSync(join(sampleRoot, '.vscode-test'))).toBe(true);
-    expect(existsSync(join(repoRoot, '.vscode-test'))).toBe(false);
+    expect(existsSync(join(process.cwd(), '.vscode-test'))).toBe(false);
   });
 
   it('runs tests inside the extension host', () => {
@@ -84,17 +81,18 @@ describe('vscode extension-host pool', () => {
     expect(logs).toContain('e2e: console forwarded from the extension host');
   });
 
-  it('reruns tests inside the same extension host on file change', { timeout: 120_000 }, async () => {
-    const source = await readFile(sampleTestFile, 'utf8');
+  it('supports watch mode test reruns', { timeout: 120_000 }, async () => {
+    const source = await readFile(join(sampleRoot, 'src/extension.ts'), 'utf8');
+
     onTestFinished(async () => {
-      await writeFile(sampleTestFile, source);
+      await writeFile(join(sampleRoot, 'src/extension.ts'), source);
     });
 
     const rerunEnded = awaitNextRun();
     // Content change, not just mtime: the watcher reliably schedules a rerun.
-    await writeFile(sampleTestFile, `${source}\nit('e2e rerun marker', () => { expect(1).toBe(1); });\n`);
+    await writeFile(join(sampleRoot, 'src/extension.ts'), `${source}\n// e2e: dependency rerun marker\n`);
     await rerunEnded;
 
-    expect(findTest('vscode-api-pass', 'e2e rerun marker')?.ok()).toBe(true);
+    expect(findTest('vscode-api-pass', 'registers and executes a command')?.ok()).toBe(true);
   });
 });
