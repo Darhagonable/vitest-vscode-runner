@@ -12,12 +12,12 @@ export async function run(): Promise<void> {
 
   const socket = net.connect({ host, port });
   const ipc = new LineIpc(socket);
-  const stopped = new Promise<void>((resolve, reject) => {
+  const connected = new Promise<void>((resolve, reject) => {
     socket.once('connect', resolve);
     socket.once('error', reject);
   });
 
-  await stopped;
+  await connected;
 
   const stopPromise = new Promise<void>((resolve, reject) => {
     ipc.on('error', reject);

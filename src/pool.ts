@@ -18,7 +18,6 @@ export class VSCodePoolWorker implements PoolWorker {
   readonly name = 'vscodeRunner';
 
   private readonly events = new EventEmitter();
-  private readonly pendingErrors: unknown[] = [];
   private server: net.Server | undefined;
   private ipc: LineIpc | undefined;
   private run: Promise<number> | undefined;
@@ -32,10 +31,6 @@ export class VSCodePoolWorker implements PoolWorker {
 
   on(event: string, callback: (arg: unknown) => void): void {
     this.events.on(event, callback);
-
-    if (event === 'error') {
-      this.flushPendingErrors();
-    }
   }
 
   off(event: string, callback: (arg: unknown) => void): void {
@@ -270,17 +265,8 @@ export class VSCodePoolWorker implements PoolWorker {
   }
 
   private emitError(error: unknown): void {
-    if (this.events.listenerCount('error') === 0) {
-      this.pendingErrors.push(error);
-      return;
-    }
-
-    this.events.emit('error', error);
-  }
-
-  private flushPendingErrors(): void {
-    while (this.pendingErrors.length > 0 && this.events.listenerCount('error') > 0) {
-      this.events.emit('error', this.pendingErrors.shift());
+    if (this.events.listenerCount('error') > 0) {
+      this.events.emit('error', error);
     }
   }
 }
