@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import type { Plugin, ViteUserConfig } from 'vitest/config';
 import { downloadAndUnzipVSCode, type DownloadOptions, type TestOptions } from '@vscode/test-electron';
 import type { DownloadPlatform, DownloadVersion } from '@vscode/test-electron/out/download.js';
-import { createVSCodeExtensionHostPool } from './external-pool';
+import { VSCodePoolWorker } from './pool';
 
 /** Matching {@link TestOptions} and {@link DownloadOptions}. */
 export interface VSCodeExtensionHostPluginOptions {
@@ -97,7 +97,13 @@ export function vscodeRunner(options: VSCodeExtensionHostPluginOptions): Plugin 
         throw new Error('[vitest-vscode-extension-host] test.pool is managed by vscodeRunner().');
       }
 
-      config.test = { ...config.test, pool: createVSCodeExtensionHostPool(options) };
+      config.test = {
+        ...config.test,
+        pool: {
+          name: 'vscodeRunner',
+          createPoolWorker: (poolOptions) => new VSCodePoolWorker(poolOptions, options)
+        }
+      };
     },
     async configResolved(resolved) {
       const vscodeShimPath = path.join(resolvePath(resolved.root, options.cachePath ?? '.vscode-test'), vscodeShimFileName);

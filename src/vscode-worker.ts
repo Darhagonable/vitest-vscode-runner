@@ -1,5 +1,6 @@
+import { init, runBaseTests, setupEnvironment } from 'vitest/worker';
 import * as net from 'node:net';
-import { LineIpc } from './line-ipc';
+import { LineIpc } from './utils/ipc';
 
 export async function run(): Promise<void> {
   const port = Number(process.env.VITEST_RUNNER_IPC_PORT);
@@ -18,7 +19,6 @@ export async function run(): Promise<void> {
 
   await stopped;
 
-  const { init, runBaseTests, setupEnvironment } = await import('vitest/worker');
   const stopPromise = new Promise<void>((resolve, reject) => {
     ipc.on('error', reject);
     ipc.on('close', resolve);

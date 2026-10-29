@@ -10,21 +10,11 @@ import {
   SilentReporter,
   TestRunFailedError
 } from '@vscode/test-electron';
-import { LineIpc } from './line-ipc';
-import type { PoolOptions, PoolRunnerInitializer, PoolWorker } from 'vitest/node';
+import { LineIpc } from './utils/ipc';
+import type { PoolOptions, PoolWorker } from 'vitest/node';
 import type { VSCodeExtensionHostPluginOptions } from './plugin';
 
-// The bundled bridge runner executed inside the VS Code extension host.
-const runnerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'external-extension-host-runner.mjs');
-
-export function createVSCodeExtensionHostPool(options: VSCodeExtensionHostPluginOptions): PoolRunnerInitializer {
-  return {
-    name: 'vscodeRunner',
-    createPoolWorker: (poolOptions: PoolOptions) => new VSCodeExtensionHostWorker(poolOptions, options)
-  };
-}
-
-class VSCodeExtensionHostWorker implements PoolWorker {
+export class VSCodePoolWorker implements PoolWorker {
   readonly name = 'vscodeRunner';
 
   private readonly events = new EventEmitter();
@@ -111,7 +101,8 @@ class VSCodeExtensionHostWorker implements PoolWorker {
       version: process.env.VSCODE_VERSION ?? this.options.version,
       cachePath,
       extensionDevelopmentPath: this.options.extensionDevelopmentPath ?? root,
-      extensionTestsPath: runnerPath,
+      // Path to the bundled vscode worker for the extension host to import.
+      extensionTestsPath: fileURLToPath(import.meta.resolve('./vscode-worker.mjs')),
       reuseMachineInstall: this.options.reuseMachineInstall,
       extensionTestsEnv: {
         VITEST_RUNNER_IPC_HOST: '127.0.0.1',
@@ -169,7 +160,7 @@ class VSCodeExtensionHostWorker implements PoolWorker {
         await this.run;
       }
     } catch (error) {
-      if (!this.isVSCodeTestRunFailure(error)) {
+      if (!(error instanceof TestRunFailedError)) {
         throw error;
       }
     } finally {
@@ -260,11 +251,6 @@ class VSCodeExtensionHostWorker implements PoolWorker {
       port: address.port,
       connected
     };
-  }
-
-  private isVSCodeTestRunFailure(error: unknown) {
-    return error instanceof TestRunFailedError
-      && path.basename(runnerPath).startsWith('external-extension-host-runner');
   }
 
   private async cleanupAfterFailedStart() {
