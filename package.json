@@ -1,6 +1,7 @@
 {
   "name": "vitest-vscode-runner",
   "version": "0.0.9",
+  "license": "MIT",
   "private": false,
   "type": "module",
   "description": "Vitest plugin for running VS Code extension tests inside the extension host.",

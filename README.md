@@ -1,231 +1,225 @@
-**THIS IS A PROTOTYPE. USE AT YOUR OWN RISK. NO SUPPORT SHOULD BE EXPECTED**
-
 # vitest-vscode-runner
 
-Experimental Vitest plugin for running VS Code extension tests inside a real VS Code Extension Development Host.
+[![CI](https://github.com/Darhagonable/vitest-vscode-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/Darhagonable/vitest-vscode-runner/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Inspired by [@gitbybit/vscode-extension-test-vitest-runner](https://www.npmjs.com/package/@gitbybit/vscode-extension-test-vitest-runner).
+**Test your VS Code extensions with the real deal.** A Vitest plugin that runs your test suites inside an actual VS Code Extension Host—no mocks, no compromises.
+
+> This project is derived from [vitest-environment-vscode](https://www.npmjs.com/package/vitest-environment-vscode) ([repo](https://github.com/andrew-w-ross/vitest-enviroment-vscode)) by [andrew-w-ross](https://github.com/andrew-w-ross) and [@gitbybit/vscode-extension-test-vitest-runner](https://www.npmjs.com/package/@gitbybit/vscode-extension-test-vitest-runner) by [neochief](https://github.com/neochief).
 
 ## Why This Exists
 
-VS Code extension tests that import `vscode` need to execute inside the VS Code extension host. Normal Vitest workers run in regular Node processes, so `import * as vscode from 'vscode'` cannot be resolved there.
+Testing VS Code extensions shouldn't require elaborate mocking strategies or heavyweight fixtures. This plugin lets you:
 
-This package provides a Vitest plugin backed by a custom pool. The pool launches VS Code with `@vscode/test-electron`, connects the external Vitest process to a small bridge running inside the extension host, and runs the test files there.
+- ✅ **Test against the real `vscode` API** — no synthetic stubs
+- ✅ **Write standard Vitest tests** — same expect, describe, it you already know
+- ✅ **Get fast feedback** — reuse the Extension Host across files for quick iteration
+- ✅ **Debug naturally** — set breakpoints and inspect state like any Node.js app
 
-```text
-Vitest CLI / IDE
-  -> custom Vitest pool
-     -> @vscode/test-electron
-        -> VS Code Extension Development Host
-           -> Vitest worker bridge
-              -> test files import "vscode"
+## Quick Start
+
+### 1. Install
+
+```bash
+npm install --save-dev vitest vitest-vscode-runner
+# or
+yarn add -D vitest vitest-vscode-runner
+# or
+pnpm add -D vitest vitest-vscode-runner
 ```
 
-## Usage
+### 2. Configure
 
 ```ts
+// vitest.config.ts
 import { defineConfig } from 'vitest/config';
 import { vscodeRunner } from 'vitest-vscode-runner';
 
 export default defineConfig({
   plugins: [
     vscodeRunner({
-      version: '1.121.0'
-    })
+      version: 'insiders', // or 'stable' / specific VS Code version tag
+      reuseWorker: true,
+    }),
   ],
   test: {
-    include: ['test/**/*.test.ts'],
-    globals: true
-  }
+    include: ['src/**/*.test.ts'],
+  },
 });
 ```
 
-The plugin sets Vitest to a single in-process VS Code extension-host worker, resolves the virtual `vscode` module through an extension-host CommonJS shim, and points Vitest at the internal extension-host bridge.
+#### Configuration Options
 
-The plugin resolves the VS Code test executable during Vitest's config startup via `@vscode/test-electron`, before the custom pool starts running test files. If the matching VS Code test build is not already cached, the first run downloads it into `cachePath` (`.vscode-test` by default); later runs reuse that cache. This keeps download time out of individual test timeouts while avoiding package-manager install hooks.
+`vscodeRunner` accepts these options:
 
-If VS Code is provisioned separately, pass its executable path to skip `@vscode/test-electron` downloads:
+| Option                     | Default      | Description                                                                                                                                                                                                 |
+| -------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                  | `'stable'`   | VS Code build to download: `'stable'`, `'insiders'`, or a specific version tag like `'1.143.1'`. Overridden by `VSCODE_VERSION` environment variable if set.                                                |
+| `reuseWorker`              | `true`       | Allow Vitest to reuse the extension-host worker across test files.                                                                                                                                          |
+| `vscodeExecutablePath`     | `undefined`  | Path to a VS Code executable to use for testing. If not specified, VS Code will be downloaded based on `version`.                                                                                           |
+| `reuseMachineInstall`      | `false`      | Whether VS Code should be launched using default settings and extensions installed on this machine. If `false`, then separate directories will be used inside the `.vscode-test` folder within the project. |
+| `extensionDevelopmentPath` | project root | The extension root loaded into the development host.                                                                                                                                                        |
+| `launchArgs`               | `[]`         | Additional arguments passed to the VS Code executable. See [`code --help`](https://code.visualstudio.com/docs/configure/command-line) for available options.                                                |
+| `platform`                 | (auto)       | VS Code platform to download: `'darwin'`, `'darwin-arm64'`, `'win32-x64-archive'`, `'win32-arm64-archive'`, `'linux-x64'`, `'linux-arm64'`, `'linux-armhf'`                                                 |
+| `cachePath`                | (auto)       | Directory where downloaded VS Code instances are cached. Defaults to `.vscode-test` in your project.                                                                                                        |
+| `timeout`                  | `undefined`  | Milliseconds to wait for VS Code download before timing out.                                                                                                                                                |
+
+**Common Use Cases:**
+
+- **Pin a specific VS Code version:** Set `version: '1.143.1'` for reproducible CI builds
+- **Test multiple VS Code versions in CI:** Use a GitHub Actions matrix with the `VSCODE_VERSION` environment variable:
+    ```yaml
+    jobs:
+        test:
+            strategy:
+                matrix:
+                    vscode-version: [stable, insiders]
+            steps:
+                # ... setup steps ...
+                - name: Run tests
+                  run: npm test
+                  env:
+                      VSCODE_VERSION: ${{ matrix.vscode-version }}
+    ```
+    See the [full CI workflow example](.github/workflows/ci.yml) for a complete setup.
+- **Use your local VS Code:** Set `vscodeExecutablePath: '/Applications/Visual Studio Code.app/Contents/MacOS/Electron'` to test against your installed copy
+- **Test with specific settings:** Use `reuseMachineInstall: true` to test with your actual VS Code configuration
+- **Add workspace folders:** Include `launchArgs: ['path/to/workspace']` to open a specific workspace when testing
+
+### 3. Write Tests
+
+The real `vscode` API is available in your tests—write standard Vitest suites:
 
 ```ts
-vscodeRunner({
-  vscodeExecutablePath: '/path/to/Code'
+// src/extension.test.ts
+import { describe, it, expect } from 'vitest';
+import * as vscode from 'vscode';
+
+describe('hello command', () => {
+	it('executes inside VS Code', async () => {
+		const result = await vscode.commands.executeCommand('my-extension.hello');
+		expect(result).toBeUndefined();
+	});
 });
 ```
 
-This runner is developed against VS Code 1.121.0 test downloads through `@vscode/test-electron` 3.1.0, with `vitest` 5.0.5. In that VS Code extension-host runtime, the `vscode` module is not a package on disk. VS Code provides it as a virtual CommonJS module to extension code. The runner keeps test imports natural (`import * as vscode from 'vscode'`) but maps that specifier to an internal shim that calls `require('vscode')` inside the extension host.
+### 4. Run Your Tests
 
-This avoids a subtle platform trap in Vitest's external-module path. The relevant source is [`VitestModuleEvaluator.convertIdToImportUrl()`](https://github.com/vitest-dev/vitest/blob/v5.0.0/packages/vitest/src/runtime/moduleRunner/moduleEvaluator.ts) in `packages/vitest/src/runtime/moduleRunner/moduleEvaluator.ts`. On Windows, that method converts non-URL external ids to `file://` URLs so native ESM can import real Windows paths. That conversion is correct for paths, but not for the virtual `vscode` module. If bare `vscode` is externalized, it can be treated like a path and Node will search for a real file/package instead of letting the extension host provide the API.
-
-Useful options:
-
-```ts
-vscodeRunner({
-  extensionDevelopmentPath: 'path/to/extension', // defaults to the project root
-  launchArgs: ['--disable-extensions'],
-  platform: 'linux-x64',
-  timeout: 60_000
-});
+```bash
+yarn vitest
+# or
+npm test
 ```
 
-Pin the VS Code build with `version` (`'stable'`, `'insiders'`, or an exact version like `'1.121.0'`). The `VSCODE_VERSION` environment variable overrides it when set, so CI matrices can vary the build without changing committed config. `platform` and `timeout` are forwarded to the `@vscode/test-electron` download.
+**Pro Tips:**
 
-## Debugging
+- Set `VSCODE_VERSION=insiders` (or `stable`, or a specific version) to override the configured version—useful for testing against multiple VS Code builds in CI
+- Point Vitest's `root` at your extension directory, or pass `extensionDevelopmentPath`
 
-Tests run inside the spawned VS Code extension host. IDE debuggers must attach to that extension host, not to the outer npm or Vitest process.
+## Debugging in VS Code
 
-Do not use an IDE's normal Vitest debug action for breakpoints in these tests. That debugs the outer Vitest process; test code that imports `vscode` runs in the spawned extension host.
+If you're using VS Code (you probably are), drop the snippet below into your extension repo's `.vscode/launch.json`:
 
-### Using vitest's inspector flags
-
-Run with `--inspect` or `--inspect-brk` exactly as you would for any vitest project:
-
-```sh
-vitest --inspect-brk
-```
-
-The plugin translates vitest's inspector settings into `--inspect-brk-extensions=9229` on the VS Code process, pausing the extension host at startup until a debugger attaches. The bridge connect timeout is automatically raised to 5 minutes under `--inspect-brk` so it has time to connect after you attach. Use a custom port with `--inspect-port=9230`.
-
-### Repo Debug Script
-
-This repo includes a manual debugging script:
-
-```sh
-pnpm run debug:extension-host
-```
-
-It runs the suite with `vitest --inspect-brk`: the plugin translates vitest's inspector flag into `--inspect-brk-extensions=9229`, pausing the extension host at startup until a debugger attaches, with the bridge connect timeout raised to 5 minutes.
-
-```ts
-vitest --run --inspect-brk --no-file-parallelism
-```
-
-### VS Code
-
-This repo includes `.vscode/launch.json` with:
-
-```json
+```jsonc
 {
-  "name": "Attach Vitest VS Code Extension Host",
-  "type": "extensionHost",
-  "request": "attach",
-  "port": 9229,
-  "sourceMaps": true
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Vitest: Debug Extension Tests",
+			"autoAttachChildProcesses": true,
+			"cwd": "${workspaceFolder}",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+			"args": ["run", "--inspect-brk", "--no-file-parallelism"],
+			"smartStep": true,
+			"console": "integratedTerminal",
+		},
+		{
+			"type": "node",
+			"request": "attach",
+			"name": "Attach to vscode-worker",
+			"continueOnAttach": true,
+			"port": 9229,
+		},
+	],
+	"compounds": [
+		{
+			"name": "Vitest: Debug Extension Host",
+			"configurations": ["Vitest: Debug Extension Tests", "Attach to vscode-worker"],
+			"stopAll": true,
+		},
+	],
 }
 ```
 
-To debug a test:
+Then:
 
-1. Set a breakpoint in `tests/sample-extension/tests/*.test.ts` or `tests/sample-extension/src/extension.ts`.
-2. Start the debuggable run:
+1. Open the **Run and Debug** view (`Ctrl+Shift+D` / `Cmd+Shift+D`).
+2. Pick **Vitest: Debug Extension Host**.
+3. Press **F5** and wait for VS Code to attach.
 
-   ```sh
-   pnpm run debug:extension-host tests/sample-extension/tests/vscode-api-pass.test.ts
-   ```
+Behind the scenes, the first config launches Vitest with `--inspect-brk`, and the second attaches to the Extension Host worker once it starts.
 
-3. Wait for:
+Set breakpoints anywhere in your Vitest specs or extension code; once the corresponding worker spins up, they'll hit. Use the Debug Console to evaluate values or run `vscode` commands on the fly.
 
-   ```text
-   Started local extension host with pid ...
-   ```
+## How It Works
 
-4. Run the `Attach Vitest VS Code Extension Host` debug configuration.
+```mermaid
+sequenceDiagram
+    participant Vitest as Vitest (Node)
+    participant Pool as VS Code Pool
+    participant Host as Extension Host (VS Code)
+    participant Tests as Your Tests
 
-### JetBrains IDEs
-
-For PHPStorm, WebStorm, or IntelliJ IDEA, create this run configuration once:
-
-```text
-Type: Attach to Node.js/Chrome
-Host: 127.0.0.1
-Port: 9229
+    Vitest->>Pool: Initialize custom pool
+    Pool->>Host: Launch via @vscode/test-electron
+    Pool->>Host: Establish TCP connection
+    Host->>Pool: Ready signal
+    Vitest->>Pool: Run tests
+    Pool->>Host: Forward test requests
+    Host->>Tests: Execute in Extension Host
+    Tests-->>Host: Access vscode API
+    Host->>Pool: Stream results via RPC
+    Pool->>Vitest: Report test results
 ```
 
-To debug a test:
-
-1. Set a breakpoint in `tests/sample-extension/tests/*.test.ts` or `tests/sample-extension/src/extension.ts`.
-2. Start the debuggable run:
-
-   ```sh
-   pnpm run debug:extension-host tests/sample-extension/tests/vscode-api-pass.test.ts
-   ```
-
-3. Wait for:
-
-   ```text
-   Started local extension host with pid ...
-   ```
-
-4. Run the `Attach to Node.js/Chrome` configuration.
-
-Only one extension-host debug run can use `127.0.0.1:9229` and the test VS Code profile at a time. Stop the current debug run before starting another one.
+1. Vitest (running in Node) initializes the custom pool
+2. The pool launches VS Code and the bridge inside the Extension Host connects back over TCP
+3. Your tests execute inside the Extension Host with full access to the real `vscode` API
+4. Test results stream back through the pool to Vitest's reporters
 
 ## Repository Layout
 
-```text
-src/
-  plugin.ts                         public Vitest plugin/helper
-  external-pool.ts                  custom Vitest pool that launches VS Code
-  external-extension-host-runner.mts bridge loaded by VS Code
-  framed-ipc.ts                     small framed TCP protocol
+| Path                          | Description                                        |
+| ----------------------------- | -------------------------------------------------- |
+| **`src/`**                    | The plugin, custom pool, and extension-host bridge |
+| **`tests/sample-extension/`** | Sample VS Code extension used as a test fixture    |
 
-tests/
-  vscode-worker.test.ts             e2e suite: boots a single nested Vitest
-                                    instance (watch mode) on the sample project
-  unit/                             transport unit tests
-  sample-extension/                 fixture VS Code extension: the dev-extension
-                                    host, exercised only by the nested instance
-    tests/                          sample Vitest tests
-    vitest.config.ts                consumer config using the plugin
+### Development
 
-vitest.config.ts                    outer suite (e2e + unit tests); the plugin
-                                    itself is only loaded by the nested instance
+```bash
+# Install dependencies
+pnpm install
+
+# Build
+pnpm build
+
+# Run all tests
+pnpm test
+
+# Run the sample extension directly
+pnpm test:sample-extension
+
+# Typecheck
+pnpm typecheck
 ```
 
-## Test Coverage
+## Contributing
 
-`pnpm test` boots a single nested Vitest instance (watch mode) against
-`tests/sample-extension` — the same plugin setup a consumer would have —
-and verifies end to end that:
+Contributions welcome! Please open an issue first to discuss what you'd like to change.
 
-- The VS Code instance is found in, or downloaded into,
-  `tests/sample-extension/.vscode-test` only; no `.vscode-test`
-  is created at the repo root.
-- Tests run inside/through the VS Code extension host.
-- Tests can access the `vscode` APIs.
-- The extension can be activated directly from source.
-- Tests can register and execute VS Code commands.
-- Vitest correctly reports a test inside the VS Code instance as passed.
-- Vitest correctly reports a test inside the VS Code instance as failed
-  (assertion errors and thrown runtime errors propagate).
-- Vitest correctly reports a test inside the VS Code instance as
-  expectedly failed (`it.fails` passes).
-- The plugin correctly forwards `console.log` output from inside the
-  VS Code instance to Vitest.
-- Watch mode works: changing a test file reruns it inside the same
-  VS Code instance.
+## License
 
-Unit tests for the IPC transport live in `tests/unit/`.
-
-## Scripts
-
-The repo keeps only public workflow scripts in `package.json`:
-
-```sh
-pnpm run build                    # build the plugin and sample extension
-pnpm run typecheck                # typecheck all TypeScript projects
-pnpm run debug:extension-host     # build, then start a debuggable extension-host run
-pnpm test              # build, then run the Vitest dogfood suite
-pnpm run test:extension-host-debugger
-```
-
-`pnpm run build` clears `dist/`, then compiles the runner.
-
-`pnpm run typecheck` checks the plugin, test harness, sample suite, and sample extension projects.
-
-The sample suite intentionally contains one failing test so file-level and test-level reporting can be inspected in Vitest and IDE integrations.
-
-`pnpm run test:extension-host-debugger` is not part of the manual debugging flow. It is an internal smoke check for this repo that verifies the extension-host inspector can stop at a breakpoint in `tests/sample-extension/tests/vscode-api-pass.test.ts`.
-
-## Current Limits
-
-- The extension host bridge uses a TCP connection to report back to the external Vitest process.
+MIT
