@@ -3,14 +3,13 @@ import * as net from 'node:net';
 import { LineIpc } from './utils/ipc';
 
 export async function run(): Promise<void> {
-  const port = Number(process.env.VITEST_RUNNER_IPC_PORT);
-  const host = process.env.VITEST_RUNNER_IPC_HOST || '127.0.0.1';
+  const ipcPath = process.env.VITEST_RUNNER_IPC_PATH;
 
-  if (!Number.isInteger(port) || port <= 0) {
-    throw new Error('Missing VITEST_RUNNER_IPC_PORT for Vitest VS Code bridge.');
+  if (!ipcPath) {
+    throw new Error('Missing VITEST_RUNNER_IPC_PATH for Vitest VS Code bridge.');
   }
 
-  const socket = net.connect({ host, port });
+  const socket = net.connect(ipcPath);
   const ipc = new LineIpc(socket);
   const connected = new Promise<void>((resolve, reject) => {
     socket.once('connect', resolve);

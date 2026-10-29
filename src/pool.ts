@@ -22,6 +22,7 @@ export class VSCodePoolWorker implements PoolWorker {
   private ipc: LineIpc | undefined;
   private run: Promise<number> | undefined;
   private profilePath: string | undefined;
+  private pipePath: string | undefined;
   private stopping = false;
 
   constructor(
@@ -55,8 +56,9 @@ export class VSCodePoolWorker implements PoolWorker {
       return;
     }
 
-    const { server, port, connected } = await this.createServer();
+    const { server, pipePath, connected } = await this.createServer();
     this.server = server;
+    this.pipePath = pipePath;
 
     // Anchor the download cache at the project root so nothing leaks outside
     // the package in monorepos. Per-worker profiles live in the OS temp dir:
@@ -100,8 +102,7 @@ export class VSCodePoolWorker implements PoolWorker {
       extensionTestsPath: fileURLToPath(import.meta.resolve('./vscode-worker.mjs')),
       reuseMachineInstall: this.options.reuseMachineInstall,
       extensionTestsEnv: {
-        VITEST_RUNNER_IPC_HOST: '127.0.0.1',
-        VITEST_RUNNER_IPC_PORT: String(port)
+        VITEST_RUNNER_IPC_PATH: pipePath
       },
       launchArgs,
       reporter: new SilentReporter()
@@ -168,6 +169,11 @@ export class VSCodePoolWorker implements PoolWorker {
         await rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
         this.profilePath = undefined;
       }
+
+      if (this.pipePath) {
+        await rm(this.pipePath, { force: true }).catch(() => undefined);
+        this.pipePath = undefined;
+      }
     }
   }
 
@@ -188,18 +194,17 @@ export class VSCodePoolWorker implements PoolWorker {
 
   private async createServer() {
     const server = net.createServer();
+    // Windows named pipes live in their own namespace; unix sockets are
+    // files, so keep the path short (sun_path is 108 bytes on Linux).
+    const pipePath = process.platform === 'win32'
+      ? `\\\\.\\pipe\\vitest-vscode-runner-${randomUUID().slice(0, 8)}`
+      : path.join(os.tmpdir(), `vsct-ipc-${randomUUID().slice(0, 8)}.sock`);
 
     await new Promise<void>((resolve, reject) => {
       server.once('listening', () => resolve());
-      server.once('error', error => reject(new Error('Could not start the local TCP server for the VS Code Vitest worker.', { cause: error })));
-      server.listen(0, '127.0.0.1');
+      server.once('error', error => reject(new Error('Could not start the local pipe server for the VS Code Vitest worker.', { cause: error })));
+      server.listen(pipePath);
     });
-
-    const address = server.address();
-
-    if (!address || typeof address === 'string') {
-      throw new Error('Could not allocate TCP port for VS Code Vitest worker.');
-    }
 
     let resolveConnected: () => void = () => {};
     let rejectConnected: (reason?: any) => void = () => {};
@@ -243,7 +248,7 @@ export class VSCodePoolWorker implements PoolWorker {
 
     return {
       server,
-      port: address.port,
+      pipePath,
       connected
     };
   }
@@ -256,6 +261,11 @@ export class VSCodePoolWorker implements PoolWorker {
     if (this.profilePath) {
       await rm(this.profilePath, { recursive: true, force: true }).catch(() => undefined);
       this.profilePath = undefined;
+    }
+
+    if (this.pipePath) {
+      await rm(this.pipePath, { force: true }).catch(() => undefined);
+      this.pipePath = undefined;
     }
 
     this.ipc = undefined;
