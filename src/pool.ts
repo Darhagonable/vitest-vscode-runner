@@ -75,7 +75,8 @@ export class VSCodePoolWorker implements PoolWorker {
     if (!this.options.reuseMachineInstall) {
       launchArgs.push(
         `--extensions-dir=${path.join(this.profilePath, 'extensions')}`,
-        `--user-data-dir=${path.join(this.profilePath, 'user-data')}`
+        `--user-data-dir=${path.join(this.profilePath, 'user-data')}`,
+        '--disable-extensions'
       );
     }
 
@@ -84,7 +85,9 @@ export class VSCodePoolWorker implements PoolWorker {
       launchArgs.push(debugArg);
     }
 
-    launchArgs.push(...(this.options.launchArgs ?? ['--disable-extensions']));
+    if (this.options.launchArgs) {
+      launchArgs.push(...this.options.launchArgs);
+    }
 
     // VS Code's Vitest extension runs test processes under Electron-as-Node.
     // The spawned VS Code must start as Electron, not inherit that mode.

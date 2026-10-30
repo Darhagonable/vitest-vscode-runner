@@ -61,7 +61,7 @@ describe('LineIpc', () => {
     }
 
     await all;
-    expect(received.map((m: { i: number }) => m.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(received).toEqual(Array.from({ length: 10 }, (_, i) => ({ i })));
   });
 
   it('reassembles a large message fragmented across TCP chunks', async () => {
